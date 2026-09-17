@@ -45,6 +45,14 @@ def _pct(a: float | None, b: float | None) -> float | None:
     return None if not a or not b else (a / b - 1) * 100
 
 
+def _fine_score(position: int | None, n: int) -> float | None:
+    """Exact percentile (one decimal) from the position: #1 of N → 100.0, #N → ≈0.2.
+    Consistent with buy_rank = ceil(percentile)."""
+    if position is None or n <= 0:
+        return None
+    return round(100.0 * (1 - (position - 1) / n), 1)
+
+
 def _item(s: FactorScore, full: bool = False) -> dict:
     d = {
         "ticker": s.ticker, "symbol": s.ticker.replace(".NS", ""), "date": str(s.date),
@@ -84,11 +92,15 @@ def list_rank(
                       .offset(offset).limit(limit)).scalars().all()
     prev_date, prev = _previous(db, on, 20)
     odds = _latest_odds(db)
+    n = max(1, len(all_rows))
     items = []
     for s in rows:
         p = prev.get(s.ticker)
+        pos = position.get(s.ticker)
         items.append({
-            **_item(s), "position": position.get(s.ticker),
+            **_item(s), "position": pos,
+            # exact percentile with one decimal: 100.0 is the very top, unique per stock
+            "score": _fine_score(pos, n),
             "rank_change_20d": (s.buy_rank - p[0]) if p else None,
             "price_change_20d_pct": _pct(s.close, p[1]) if p else None,
             "prob_up": odds.get(s.ticker),
@@ -150,6 +162,7 @@ def rank_detail(ticker: str, history: int = Query(60, ge=1, le=500), db: Session
     return {
         **_item(latest, full=True),
         "position": (better or 0) + 1, "universe": universe,
+        "score": _fine_score((better or 0) + 1, universe or 1),
         "history": [{"date": str(r.date), "buy_rank": r.buy_rank, "close": r.close} for r in reversed(rows)],
     }
 

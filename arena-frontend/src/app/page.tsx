@@ -55,7 +55,7 @@ export default function RankPage() {
     summary: `Buy Rank list as of ${date}. ${items.length} stocks ranked; ${counts.Strong ?? 0} Strong, ${counts.Good ?? 0} Good, ${counts.Neutral ?? 0} Neutral, ${counts.Weak ?? 0} Weak.` +
       (sector || band || q ? ` Filters: ${[sector && `sector=${sector}`, band && `band=${band}`, q && `search="${q}"`].filter(Boolean).join(", ")}. ${filtered.length} match.` : ""),
     data: {
-      visible_rows: filtered.slice(0, shown).map((i) => ({ position: i.position, symbol: i.symbol, rank: i.buy_rank, band: i.band, sector: i.sector, price: i.close,
+      visible_rows: filtered.slice(0, shown).map((i) => ({ position: i.position, symbol: i.symbol, score: i.score, rank_bucket: i.buy_rank, band: i.band, sector: i.sector, price: i.close,
         rank_change_1m: i.rank_change_20d, price_change_1m_pct: i.price_change_20d_pct, model_odds_pct: i.prob_up == null ? null : Math.round(i.prob_up * 100), factor_contributions: i.contributions })),
       showing: Math.min(shown, filtered.length), of: filtered.length,
       biggest_movers_1m: movers ? { risers: movers.risers.map((m) => `${m.symbol} ${m.from_rank}→${m.to_rank}`), fallers: movers.fallers.map((m) => `${m.symbol} ${m.from_rank}→${m.to_rank}`) } : null,
@@ -120,7 +120,7 @@ export default function RankPage() {
             <Link key={i.ticker} href={`/rank/${i.symbol}`} className="card" style={{ padding: 18, display: "grid", gap: 14, position: "relative", overflow: "hidden" }}>
               <div aria-hidden style={{ position: "absolute", right: -30, top: -30, width: 140, height: 140, borderRadius: "50%", background: BAND[i.band].soft, opacity: 0.8 }} />
               <div style={{ display: "flex", gap: 14, alignItems: "center", position: "relative" }}>
-                <RankRing rank={i.buy_rank} band={i.band} size={84} />
+                <RankRing rank={i.score ?? i.buy_rank} band={i.band} size={84} />
                 <div style={{ minWidth: 0 }}>
                   <div className="eyebrow">#{sector || band || q ? n + 1 : i.position ?? n + 1} {sector ? `in ${sector}` : `of ${universe}`}</div>
                   <div style={{ fontFamily: "var(--font-display)", fontWeight: 800, fontSize: 22, letterSpacing: "-0.01em", marginTop: 2 }}>{i.symbol}</div>
@@ -153,8 +153,8 @@ export default function RankPage() {
       {/* Table */}
       <section className="card fade-up-4" style={{ overflow: "hidden" }}>
         <div style={{ padding: "12px 16px", fontSize: 12.5, color: "var(--text-2)", background: "var(--accent-soft)", lineHeight: 1.5 }}>
-          <b style={{ color: "var(--accent-ink)" }}>How to read the score.</b> Buy Rank is a percentile of the {universe || "~470"} stocks ranked today, so about {universe ? Math.round(universe / 100) : 5} stocks
-          share each number and <b>100 means the top 1%</b>, not a perfect score. The <b>#</b> column is the exact position; ties are broken by the underlying factor score.
+          <b style={{ color: "var(--accent-ink)" }}>How to read the score.</b> Buy Rank is a percentile of the {universe || "~470"} stocks ranked today: <b>100.0 is the single strongest stock</b>, each step down is {universe ? (100 / universe).toFixed(1) : "0.2"} points, and 50.0 is the middle of the pack.
+          The bands (Strong, Good, Neutral, Weak) use the whole-number version. Ties are broken by the underlying factor score.
         </div>
         <div style={{ overflowX: "auto" }}>
           <table style={{ width: "100%", borderCollapse: "collapse", minWidth: 860 }}>
@@ -198,9 +198,9 @@ export default function RankPage() {
                       <td style={{ padding: "11px 14px", textAlign: "right" }}>
                         <div style={{ display: "inline-flex", alignItems: "center", gap: 10 }}>
                           <div aria-hidden style={{ width: 64, height: 8, borderRadius: 999, background: s.soft, overflow: "hidden" }}>
-                            <div style={{ width: `${i.buy_rank}%`, height: "100%", background: s.fill, borderRadius: 999 }} />
+                            <div style={{ width: `${i.score ?? i.buy_rank}%`, height: "100%", background: s.fill, borderRadius: 999 }} />
                           </div>
-                          <b className="tnum" style={{ minWidth: 28, textAlign: "right", fontSize: 15 }}>{i.buy_rank}</b>
+                          <b className="tnum" style={{ minWidth: 40, textAlign: "right", fontSize: 15 }}>{(i.score ?? i.buy_rank).toFixed(1)}</b>
                         </div>
                       </td>
                       <td className="tnum" style={{ padding: "11px 14px", textAlign: "right", fontWeight: 800, color: rc == null ? "var(--text-dim)" : rc > 0 ? "var(--strong-ink)" : rc < 0 ? "var(--weak-ink)" : "var(--text-muted)" }}>

@@ -97,8 +97,9 @@ What the app shows
 - Buy Rank: a 1–100 percentile score per NIFTY 500 stock from seven factors (12-month and 6-month
   momentum, trend quality, calmness/low volatility, liquidity, volume confirmation, overheat penalty),
   banded Strong (80+) / Good (60+) / Neutral (40+) / Weak. It is a ranking, not a buy signal.
-  Because it is a percentile of ~470 stocks, about five stocks share each score; "100" means the top
-  1%, and the list order (position #1, #2, …) breaks ties by the underlying TOPSIS score.
+  The UI shows the exact percentile with one decimal (100.0 is the single top stock, 99.8 the next,
+  and so on); the whole-number version (~5 stocks per value, 100 = top 1%) sets the band. Position
+  #1, #2, … is the same ordering.
 - Predictions: a scikit-learn HistGradientBoosting model trained walk-forward on ~19 years of history
   gives each stock odds of beating the market median over the next 3 months. Out of sample it is only
   a little better than a coin flip on single stocks; the top-odds group has beaten the market in most

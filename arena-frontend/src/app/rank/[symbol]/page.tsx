@@ -22,8 +22,8 @@ export default function StockRankPage({ params }: { params: { symbol: string } }
   }, [symbol]);
 
   useScreen(d ? {
-    page: "stock", route: `/rank/${symbol}`, title: `${d.symbol} — Buy Rank ${d.buy_rank} (${d.band})`, asOf: d.date,
-    summary: `Stock page for ${d.symbol} (${d.sector}). Buy Rank ${d.buy_rank}/100, band ${d.band}, price ₹${d.close}, as of ${d.date}.` +
+    page: "stock", route: `/rank/${symbol}`, title: `${d.symbol} — Buy Rank ${(d.score ?? d.buy_rank).toFixed(1)} (${d.band})`, asOf: d.date,
+    summary: `Stock page for ${d.symbol} (${d.sector}). Buy Rank ${(d.score ?? d.buy_rank).toFixed(1)}/100 (position #${d.position} of ${d.universe}), band ${d.band}, price ₹${d.close}, as of ${d.date}.` +
       (ex ? ` AI explanation shown: ${ex.bullets.join(" ")} Watch out: ${ex.watch_out}` : " AI explanation not requested yet."),
     data: {
       buy_rank: d.buy_rank, band: d.band, sector: d.sector, price: d.close, eligible: d.eligible,
@@ -60,7 +60,7 @@ export default function StockRankPage({ params }: { params: { symbol: string } }
       {/* Header card */}
       <section className="card fade-up" style={{ padding: 24, display: "flex", flexWrap: "wrap", gap: 24, alignItems: "center", position: "relative", overflow: "hidden" }}>
         <div aria-hidden style={{ position: "absolute", left: -60, top: -80, width: 260, height: 260, borderRadius: "50%", background: s.soft, filter: "blur(30px)", opacity: 0.9 }} />
-        <RankRing rank={d.buy_rank} band={d.band} size={132} stroke={12} />
+        <RankRing rank={d.score ?? d.buy_rank} band={d.band} size={132} stroke={12} />
         <div style={{ position: "relative", flex: "1 1 260px" }}>
           <div className="eyebrow">{d.sector} · as of {fmtDate(d.date)}</div>
           <h1 style={{ fontFamily: "var(--font-display)", fontWeight: 800, fontSize: 38, letterSpacing: "-0.02em", marginTop: 4 }}>{d.symbol}</h1>
@@ -71,7 +71,7 @@ export default function StockRankPage({ params }: { params: { symbol: string } }
             {!d.eligible && <span className="chip" style={{ background: "var(--warn-soft)", color: "var(--neutral-ink)" }}>Not eligible — low liquidity or history</span>}
           </div>
           <p style={{ color: "var(--text-2)", marginTop: 12, maxWidth: 560, lineHeight: 1.55 }}>
-            <b style={{ color: s.ink }}>{s.word}.</b> {s.blurb} Ranked <b>{d.buy_rank}</b> out of 100 NIFTY 500 stocks on the factors below.
+            <b style={{ color: s.ink }}>{s.word}.</b> {s.blurb} Scores <b>{(d.score ?? d.buy_rank).toFixed(1)}</b> out of 100 on the factors below{d.position ? <>, position <b>#{d.position}</b> of {d.universe}</> : null}.
           </p>
         </div>
       </section>

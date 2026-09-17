@@ -22,7 +22,7 @@ export interface RankItem {
 }
 
 export interface RankRow extends RankItem {
-  position?: number; rank_change_20d?: number | null; price_change_20d_pct?: number | null; prob_up?: number | null;
+  position?: number; score?: number | null; rank_change_20d?: number | null; price_change_20d_pct?: number | null; prob_up?: number | null;
 }
 export interface RankList { date: string | null; count: number; universe?: number; compare_date?: string | null; items: RankRow[] }
 export interface Mover {
@@ -44,7 +44,7 @@ export interface PredictLive {
 }
 
 export interface RankDetail extends RankItem {
-  position?: number; universe?: number;
+  position?: number; universe?: number; score?: number | null;
   z: Record<FactorKey, number | null>;
   raw: Record<string, number | null>;
   history: { date: string; buy_rank: number; close: number }[];
