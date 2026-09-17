@@ -97,6 +97,45 @@ function bandForRank(r: number, regime: string | null): Band {
   return r >= s ? "Strong" : r >= g ? "Good" : r >= n ? "Neutral" : "Weak";
 }
 
+/* ── Rank movers: biggest rises and falls, diverging bars ───────────── */
+export function MoversChart({ risers, fallers }: {
+  risers: { symbol: string; change: number; from_rank: number; to_rank: number }[];
+  fallers: { symbol: string; change: number; from_rank: number; to_rank: number }[];
+}) {
+  const data = [...risers, ...[...fallers].reverse()].map((m) => ({ ...m, name: m.symbol }));
+  const max = Math.max(10, ...data.map((d) => Math.abs(d.change)));
+  return (
+    <Box h={Math.max(160, data.length * 24 + 24)}>
+      <BarChart data={data} layout="vertical" margin={{ top: 4, right: 44, bottom: 0, left: 8 }} barCategoryGap={5}>
+        <CartesianGrid horizontal={false} stroke="var(--grid)" />
+        <XAxis type="number" domain={[-max, max]} tick={AXIS} axisLine={false} tickLine={false} tickFormatter={(v: number) => `${v > 0 ? "+" : ""}${v}`} />
+        <YAxis type="category" dataKey="name" width={96} tick={{ ...AXIS, fill: "var(--text-2)", fontWeight: 700 }} axisLine={false} tickLine={false} />
+        <ReferenceLine x={0} stroke="var(--axis)" />
+        <Tooltip contentStyle={TIP} cursor={{ fill: "var(--card2)" }} formatter={(v: number, _n, p) => [`${v > 0 ? "+" : ""}${v} points (${p.payload.from_rank} → ${p.payload.to_rank})`, "Rank change"]} />
+        <Bar dataKey="change" radius={4} isAnimationActive={false} label={{ position: "right", fontSize: 11, fill: "var(--text-2)", formatter: (v: number) => `${v > 0 ? "+" : ""}${v}` }}>
+          {data.map((d) => <Cell key={d.name} fill={d.change >= 0 ? "var(--strong)" : "var(--weak)"} />)}
+        </Bar>
+      </BarChart>
+    </Box>
+  );
+}
+
+/* ── Factor strip: seven tiny cells, one per factor, for table rows ─── */
+const STRIP_ORDER = ["mom_12_1", "mom_6_1", "trend", "low_vol", "liquidity", "vol_conf", "overheat"] as const;
+const STRIP_SHORT: Record<string, string> = { mom_12_1: "12-month momentum", mom_6_1: "6-month momentum", trend: "Trend quality", low_vol: "Calmness", liquidity: "Liquidity", vol_conf: "Volume confirmation", overheat: "Overheat penalty" };
+export function FactorStrip({ contributions, scale = 0.4 }: { contributions: Record<string, number | null>; scale?: number }) {
+  return (
+    <div style={{ display: "inline-grid", gridTemplateColumns: "repeat(7, 14px)", gap: 3 }} aria-label="Factor contributions">
+      {STRIP_ORDER.map((k) => {
+        const v = contributions?.[k];
+        const a = v == null ? 0 : Math.min(1, Math.abs(v) / scale);
+        const bg = v == null ? "var(--card2)" : v >= 0 ? `color-mix(in srgb, var(--strong) ${Math.round(15 + a * 85)}%, var(--card2))` : `color-mix(in srgb, var(--weak) ${Math.round(15 + a * 85)}%, var(--card2))`;
+        return <span key={k} title={`${STRIP_SHORT[k]}: ${v == null ? "n/a" : (v >= 0 ? "+" : "") + v.toFixed(2)}`} style={{ width: 14, height: 18, borderRadius: 4, background: bg, display: "block" }} />;
+      })}
+    </div>
+  );
+}
+
 /* ── Odds histogram (5-point buckets) ───────────────────────────────── */
 export function OddsHistogram({ probs }: { probs: number[] }) {
   const lo = 20, hi = 80;

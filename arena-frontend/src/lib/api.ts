@@ -21,7 +21,15 @@ export interface RankItem {
   contributions: Record<FactorKey, number | null>;
 }
 
-export interface RankList { date: string | null; count: number; universe?: number; items: (RankItem & { position?: number })[] }
+export interface RankRow extends RankItem {
+  position?: number; rank_change_20d?: number | null; price_change_20d_pct?: number | null; prob_up?: number | null;
+}
+export interface RankList { date: string | null; count: number; universe?: number; compare_date?: string | null; items: RankRow[] }
+export interface Mover {
+  ticker: string; symbol: string; sector: string | null; from_rank: number; to_rank: number; change: number;
+  band: Band; close: number; price_change_pct: number | null;
+}
+export interface Movers { date: string | null; compare_date: string | null; days?: number; risers: Mover[]; fallers: Mover[] }
 
 export interface LiveScore {
   run_date: string; matured_on: string; horizon: number; n: number; auc: number | null; accuracy: number;
@@ -134,6 +142,7 @@ export const api = {
     return get<RankList>(`/rank?${p.toString()}`);
   },
   rankSectors: () => get<{ date: string | null; sectors: SectorRow[] }>("/rank/sectors"),
+  rankMovers: (days = 20, limit = 6) => get<Movers>(`/rank/movers?days=${days}&limit=${limit}`),
   rankDetail: (ticker: string, history = 60) => get<RankDetail>(`/rank/${encodeURIComponent(ticker)}?history=${history}`),
   rankExplain: (ticker: string) => get<Explanation>(`/rank/${encodeURIComponent(ticker)}/explain`),
   health: () => get<{ status: string; version: string }>("/health"),

@@ -1,22 +1,24 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo, useState } from "react";
-import { api, type Band, type RankItem, type SectorRow } from "@/lib/api";
-import { BAND, fmtDate, fmtINR } from "@/lib/signals";
-import { BandChip, RankRing } from "@/components/RankRing";
+import { Fragment, useEffect, useMemo, useState } from "react";
+import { api, type Band, type Movers, type RankRow, type SectorRow } from "@/lib/api";
+import { BAND, fmtDate, fmtINR, fmtPct } from "@/lib/signals";
+import { RankRing } from "@/components/RankRing";
 import { FactorBars } from "@/components/FactorBars";
 import { LoadMore, PageHeader, Section } from "@/components/ui";
-import { BandDonut, RankHistogram, SectorBars } from "@/components/charts";
+import { BandDonut, FactorStrip, MoversChart, SectorBars } from "@/components/charts";
 import { useScreen } from "@/lib/screen";
 
 const BANDS: Band[] = ["Strong", "Good", "Neutral", "Weak"];
 const PAGE = 20;
 
 export default function RankPage() {
-  const [items, setItems] = useState<(RankItem & { position?: number })[]>([]);
+  const [items, setItems] = useState<RankRow[]>([]);
   const [universe, setUniverse] = useState(0);
   const [date, setDate] = useState<string | null>(null);
+  const [compareDate, setCompareDate] = useState<string | null>(null);
+  const [movers, setMovers] = useState<Movers | null>(null);
   const [sectors, setSectors] = useState<SectorRow[]>([]);
   const [sector, setSector] = useState("");
   const [band, setBand] = useState<Band | "">("");
@@ -29,8 +31,8 @@ export default function RankPage() {
 
   useEffect(() => {
     setLoading(true);
-    Promise.all([api.rank({ limit: 600 }), api.rankSectors()])
-      .then(([r, s]) => { setItems(r.items); setUniverse(r.universe ?? r.items.length); setDate(r.date); setSectors(s.sectors); setError(null); })
+    Promise.all([api.rank({ limit: 600 }), api.rankSectors(), api.rankMovers(20, 6)])
+      .then(([r, s, m]) => { setItems(r.items); setUniverse(r.universe ?? r.items.length); setDate(r.date); setCompareDate(r.compare_date ?? null); setSectors(s.sectors); setMovers(m); setError(null); })
       .catch((e: Error) => setError(e.message))
       .finally(() => setLoading(false));
   }, []);
@@ -53,10 +55,12 @@ export default function RankPage() {
     summary: `Buy Rank list as of ${date}. ${items.length} stocks ranked; ${counts.Strong ?? 0} Strong, ${counts.Good ?? 0} Good, ${counts.Neutral ?? 0} Neutral, ${counts.Weak ?? 0} Weak.` +
       (sector || band || q ? ` Filters: ${[sector && `sector=${sector}`, band && `band=${band}`, q && `search="${q}"`].filter(Boolean).join(", ")}. ${filtered.length} match.` : ""),
     data: {
-      visible_rows: filtered.slice(0, shown).map((i, n) => ({ n: n + 1, symbol: i.symbol, rank: i.buy_rank, band: i.band, sector: i.sector, price: i.close, top_factor_contributions: i.contributions })),
+      visible_rows: filtered.slice(0, shown).map((i) => ({ position: i.position, symbol: i.symbol, rank: i.buy_rank, band: i.band, sector: i.sector, price: i.close,
+        rank_change_1m: i.rank_change_20d, price_change_1m_pct: i.price_change_20d_pct, model_odds_pct: i.prob_up == null ? null : Math.round(i.prob_up * 100), factor_contributions: i.contributions })),
       showing: Math.min(shown, filtered.length), of: filtered.length,
+      biggest_movers_1m: movers ? { risers: movers.risers.map((m) => `${m.symbol} ${m.from_rank}→${m.to_rank}`), fallers: movers.fallers.map((m) => `${m.symbol} ${m.from_rank}→${m.to_rank}`) } : null,
     },
-  }, [loading, date, items.length, sector, band, q, shown, filtered.length]);
+  }, [loading, date, items.length, sector, band, q, shown, filtered.length, movers]);
 
   if (error) return <ErrorState message={error} />;
 
@@ -98,8 +102,10 @@ export default function RankPage() {
           <Section title="How the market splits" sub="Share of ranked stocks in each band today">
             <BandDonut counts={counts} total={items.length} />
           </Section>
-          <Section title="Where the scores sit" sub="Number of stocks per 10-point step">
-            <RankHistogram ranks={items.map((i) => i.buy_rank)} />
+          <Section title="Biggest moves this month" sub={compareDate ? `Change in Buy Rank since ${fmtDate(compareDate)}` : "Change in Buy Rank over 20 trading days"}>
+            {movers && (movers.risers.length || movers.fallers.length)
+              ? <MoversChart risers={movers.risers} fallers={movers.fallers} />
+              : <div style={{ color: "var(--text-muted)", fontSize: 13 }}>Needs a month of rank history.</div>}
           </Section>
           <Section title="Strongest sectors" sub="Average Buy Rank, top sectors">
             <SectorBars rows={sectors.map((s) => ({ sector: s.sector, count: s.count, avg_rank: s.avg_rank }))} max={8} height={220} />
@@ -151,11 +157,16 @@ export default function RankPage() {
           share each number and <b>100 means the top 1%</b>, not a perfect score. The <b>#</b> column is the exact position; ties are broken by the underlying factor score.
         </div>
         <div style={{ overflowX: "auto" }}>
-          <table style={{ width: "100%", borderCollapse: "collapse", minWidth: 820 }}>
+          <table style={{ width: "100%", borderCollapse: "collapse", minWidth: 860 }}>
             <thead>
               <tr style={{ background: "var(--card2)" }}>
-                {["#", "Stock", "Sector", "Rank", "Band", "Price", "What drives it"].map((h, i) => (
-                  <th key={h} className="eyebrow" style={{ textAlign: i >= 3 && i <= 5 ? "right" : "left", padding: "12px 14px", fontWeight: 800, whiteSpace: "nowrap" }}>{h}</th>
+                {[
+                  ["#", "left"], ["Stock", "left"], ["Rank", "right"], ["1-month change", "right"], ["Price · 1 month", "right"], ["Model odds", "right"], ["Factors", "left"],
+                ].map(([h, align]) => (
+                  <th key={h} className="eyebrow" style={{ textAlign: align as "left" | "right", padding: "12px 14px", fontWeight: 800, whiteSpace: "nowrap" }}
+                      title={h === "Factors" ? "Seven cells: 12-month momentum, 6-month momentum, trend, calmness, liquidity, volume, overheat. Green helped the rank, rose hurt it. Hover a cell." : h === "Model odds" ? "Odds of beating the market over the next 3 months, from the Predictions model" : undefined}>
+                    {h}{h === "Factors" && <span style={{ fontWeight: 500, textTransform: "none", letterSpacing: 0, marginLeft: 6, color: "var(--text-dim)" }}>12m · 6m · trend · calm · liq · vol · heat</span>}
+                  </th>
                 ))}
               </tr>
             </thead>
@@ -163,34 +174,53 @@ export default function RankPage() {
               {loading && Array.from({ length: 10 }).map((_, i) => (
                 <tr key={i}><td colSpan={7} style={{ padding: 10 }}><div className="skeleton" style={{ height: 34 }} /></td></tr>
               ))}
-              {!loading && filtered.slice(0, shown).map((i, n) => {
+              {!loading && filtered.slice(0, shown).map((i, n, arr) => {
                 const s = BAND[i.band];
-                const drivers = Object.entries(i.contributions ?? {}).filter(([, v]) => v != null).sort((a, b) => (b[1] ?? 0) - (a[1] ?? 0));
-                const best = drivers[0]?.[0]; const worst = drivers[drivers.length - 1]?.[0];
+                const newGroup = n === 0 || arr[n - 1].band !== i.band;
+                const groupCount = filtered.filter((x) => x.band === i.band).length;
+                const rc = i.rank_change_20d; const pc = i.price_change_20d_pct; const odds = i.prob_up;
                 return (
-                  <tr key={i.ticker} style={{ borderTop: "1px solid var(--border)" }}>
-                    <td className="tnum" style={{ padding: "12px 14px", color: "var(--text-muted)", fontSize: 12, fontWeight: 700 }}>#{sector || band || q ? n + 1 : i.position ?? n + 1}</td>
-                    <td style={{ padding: "12px 14px" }}>
-                      <Link href={`/rank/${i.symbol}`} style={{ fontWeight: 800, color: "var(--text)" }}>{i.symbol}</Link>
-                    </td>
-                    <td style={{ padding: "12px 14px", color: "var(--text-2)", fontSize: 13, maxWidth: 200, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{i.sector}</td>
-                    <td style={{ padding: "12px 14px", textAlign: "right" }}>
-                      <div style={{ display: "inline-flex", alignItems: "center", gap: 10 }}>
-                        <div aria-hidden style={{ width: 72, height: 8, borderRadius: 999, background: s.soft, overflow: "hidden" }}>
-                          <div style={{ width: `${i.buy_rank}%`, height: "100%", background: s.fill, borderRadius: 999 }} />
+                  <Fragment key={i.ticker}>
+                    {newGroup && !band && (
+                      <tr>
+                        <td colSpan={7} style={{ padding: "8px 14px", background: s.soft, color: s.ink, fontSize: 12, fontWeight: 800, letterSpacing: "0.04em" }}>
+                          <span className="chip-dot" style={{ background: s.fill, display: "inline-block", marginRight: 8, verticalAlign: "middle" }} />
+                          {s.word.toUpperCase()} · {groupCount} stocks · {s.blurb}
+                        </td>
+                      </tr>
+                    )}
+                    <tr style={{ borderTop: "1px solid var(--border)" }}>
+                      <td className="tnum" style={{ padding: "11px 14px", color: "var(--text-muted)", fontSize: 12, fontWeight: 700 }}>#{sector || band || q ? n + 1 : i.position ?? n + 1}</td>
+                      <td style={{ padding: "11px 14px" }}>
+                        <Link href={`/rank/${i.symbol}`} style={{ fontWeight: 800, color: "var(--text)" }}>{i.symbol}</Link>
+                        <div style={{ fontSize: 11.5, color: "var(--text-muted)", maxWidth: 220, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{i.sector}</div>
+                      </td>
+                      <td style={{ padding: "11px 14px", textAlign: "right" }}>
+                        <div style={{ display: "inline-flex", alignItems: "center", gap: 10 }}>
+                          <div aria-hidden style={{ width: 64, height: 8, borderRadius: 999, background: s.soft, overflow: "hidden" }}>
+                            <div style={{ width: `${i.buy_rank}%`, height: "100%", background: s.fill, borderRadius: 999 }} />
+                          </div>
+                          <b className="tnum" style={{ minWidth: 28, textAlign: "right", fontSize: 15 }}>{i.buy_rank}</b>
                         </div>
-                        <b className="tnum" style={{ minWidth: 28, textAlign: "right" }}>{i.buy_rank}</b>
-                      </div>
-                    </td>
-                    <td style={{ padding: "12px 14px", textAlign: "right" }}><BandChip band={i.band} size="sm" /></td>
-                    <td className="tnum" style={{ padding: "12px 14px", textAlign: "right", color: "var(--text-2)" }}>{fmtINR(i.close)}</td>
-                    <td style={{ padding: "10px 14px", fontSize: 12 }}>
-                      <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
-                        {best && <span className="chip" style={{ background: "var(--strong-soft)", color: "var(--strong-ink)", whiteSpace: "nowrap" }}>▲ {label(best)}</span>}
-                        {worst && worst !== best && <span className="chip" style={{ background: "var(--weak-soft)", color: "var(--weak-ink)", whiteSpace: "nowrap" }}>▼ {label(worst)}</span>}
-                      </div>
-                    </td>
-                  </tr>
+                      </td>
+                      <td className="tnum" style={{ padding: "11px 14px", textAlign: "right", fontWeight: 800, color: rc == null ? "var(--text-dim)" : rc > 0 ? "var(--strong-ink)" : rc < 0 ? "var(--weak-ink)" : "var(--text-muted)" }}>
+                        {rc == null ? "—" : rc > 0 ? `▲ ${rc}` : rc < 0 ? `▼ ${-rc}` : "· 0"}
+                      </td>
+                      <td className="tnum" style={{ padding: "11px 14px", textAlign: "right" }}>
+                        <div style={{ color: "var(--text-2)" }}>{fmtINR(i.close)}</div>
+                        <div style={{ fontSize: 11.5, fontWeight: 700, color: pc == null ? "var(--text-dim)" : pc >= 0 ? "var(--strong-ink)" : "var(--weak-ink)" }}>{fmtPct(pc)}</div>
+                      </td>
+                      <td className="tnum" style={{ padding: "11px 14px", textAlign: "right" }}>
+                        {odds == null ? <span style={{ color: "var(--text-dim)" }}>—</span> : (
+                          <span className="chip" style={{ background: odds >= 0.6 ? "var(--strong-soft)" : odds >= 0.5 ? "var(--good-soft)" : odds >= 0.4 ? "var(--neutral-soft)" : "var(--weak-soft)",
+                                                          color: odds >= 0.6 ? "var(--strong-ink)" : odds >= 0.5 ? "var(--good-ink)" : odds >= 0.4 ? "var(--neutral-ink)" : "var(--weak-ink)" }}>
+                            {Math.round(odds * 100)}%
+                          </span>
+                        )}
+                      </td>
+                      <td style={{ padding: "11px 14px" }}><FactorStrip contributions={i.contributions} /></td>
+                    </tr>
+                  </Fragment>
                 );
               })}
               {!loading && filtered.length === 0 && (
@@ -205,11 +235,6 @@ export default function RankPage() {
       </section>
     </div>
   );
-}
-
-function label(k: string) {
-  return ({ mom_12_1: "12-mo momentum", mom_6_1: "6-mo momentum", trend: "trend", low_vol: "calmness",
-            liquidity: "liquidity", vol_conf: "volume", overheat: "overheat" } as Record<string, string>)[k] ?? k;
 }
 
 function ErrorState({ message }: { message: string }) {

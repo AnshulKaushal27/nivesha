@@ -9,7 +9,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from database import FactorScore, get_db
+from database import FactorScore, ModelRun, Prediction, get_db
 from llm.explain import explain_rank
 
 router = APIRouter(prefix="/rank", tags=["rank"])
@@ -17,6 +17,32 @@ router = APIRouter(prefix="/rank", tags=["rank"])
 
 def _latest_date(db: Session) -> date | None:
     return db.execute(select(func.max(FactorScore.date))).scalar()
+
+
+def _date_n_back(db: Session, on: date, n: int) -> date | None:
+    """The n-th distinct score date before `on` (n trading days back)."""
+    return db.execute(select(FactorScore.date).distinct().where(FactorScore.date < on)
+                      .order_by(FactorScore.date.desc()).offset(n - 1).limit(1)).scalar()
+
+
+def _previous(db: Session, on: date, n: int) -> tuple[date | None, dict[str, tuple[int, float]]]:
+    prev = _date_n_back(db, on, n)
+    if prev is None:
+        return None, {}
+    rows = db.execute(select(FactorScore.ticker, FactorScore.buy_rank, FactorScore.close).where(FactorScore.date == prev)).all()
+    return prev, {t: (r, c) for t, r, c in rows}
+
+
+def _latest_odds(db: Session) -> dict[str, float]:
+    run = db.execute(select(ModelRun).order_by(ModelRun.as_of.desc(), ModelRun.id.desc()).limit(1)).scalar_one_or_none()
+    if run is None:
+        return {}
+    return dict(db.execute(select(Prediction.ticker, Prediction.prob_up)
+                           .where(Prediction.date == run.as_of, Prediction.horizon == run.meta.get("horizon_days", 63))).all())
+
+
+def _pct(a: float | None, b: float | None) -> float | None:
+    return None if not a or not b else (a / b - 1) * 100
 
 
 def _item(s: FactorScore, full: bool = False) -> dict:
@@ -56,8 +82,39 @@ def list_rank(
     total = db.execute(select(func.count()).select_from(stmt.subquery())).scalar()
     rows = db.execute(stmt.order_by(FactorScore.buy_rank.desc(), FactorScore.topsis.desc())
                       .offset(offset).limit(limit)).scalars().all()
-    return {"date": str(on), "count": total, "universe": len(all_rows),
-            "items": [{**_item(s), "position": position.get(s.ticker)} for s in rows]}
+    prev_date, prev = _previous(db, on, 20)
+    odds = _latest_odds(db)
+    items = []
+    for s in rows:
+        p = prev.get(s.ticker)
+        items.append({
+            **_item(s), "position": position.get(s.ticker),
+            "rank_change_20d": (s.buy_rank - p[0]) if p else None,
+            "price_change_20d_pct": _pct(s.close, p[1]) if p else None,
+            "prob_up": odds.get(s.ticker),
+        })
+    return {"date": str(on), "count": total, "universe": len(all_rows), "compare_date": str(prev_date) if prev_date else None, "items": items}
+
+
+@router.get("/movers")
+def rank_movers(days: int = Query(20, ge=1, le=120), limit: int = Query(6, ge=1, le=20), db: Session = Depends(get_db)):
+    """Biggest rises and falls in Buy Rank over the last `days` trading days (eligible stocks only)."""
+    on = _latest_date(db)
+    if on is None:
+        return {"date": None, "compare_date": None, "risers": [], "fallers": []}
+    prev_date, prev = _previous(db, on, days)
+    cur = db.execute(select(FactorScore).where(FactorScore.date == on, FactorScore.eligible == 1)).scalars().all()
+    moves = []
+    for s in cur:
+        p = prev.get(s.ticker)
+        if not p:
+            continue
+        moves.append({"ticker": s.ticker, "symbol": s.ticker.replace(".NS", ""), "sector": s.sector,
+                      "from_rank": p[0], "to_rank": s.buy_rank, "change": s.buy_rank - p[0], "band": s.band,
+                      "close": s.close, "price_change_pct": _pct(s.close, p[1])})
+    moves.sort(key=lambda m: m["change"])
+    return {"date": str(on), "compare_date": str(prev_date) if prev_date else None, "days": days,
+            "risers": list(reversed(moves[-limit:])) if moves else [], "fallers": moves[:limit]}
 
 
 @router.get("/dates")
