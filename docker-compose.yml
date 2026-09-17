@@ -1,0 +1,74 @@
+version: '3.8'
+
+services:
+  # ══════════════════════════════════════════════════════════════════
+  # Backend Service — FastAPI
+  # ══════════════════════════════════════════════════════════════════
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: ai-arena-backend
+    ports:
+      - "8000:8000"
+    environment:
+      # API Configuration
+      AICREDITS_API_KEY: ${AICREDITS_API_KEY:-your_api_key_here}
+      AICREDITS_BASE_URL: https://api.aicredits.in/v1
+      
+      # Database (SQLite inside container)
+      DATABASE_URL: sqlite:///./arena.db
+      
+      # Portfolio Config
+      DEFAULT_CAPITAL: 100000.0
+      TOP_CANDIDATES: 15
+      
+      # Scheduler Timing (IST)
+      MORNING_HOUR: 8
+      MORNING_MINUTE: 40
+      CLOSING_HOUR: 15
+      CLOSING_MINUTE: 45
+      
+      # Optional
+      UPSTOX_ANALYTICS_TOKEN: ${UPSTOX_ANALYTICS_TOKEN:-}
+      TWELVE_DATA_API_KEY: ${TWELVE_DATA_API_KEY:-}
+    volumes:
+      - ./backend:/app
+      - backend-db:/app  # Persist database
+    networks:
+      - ai-arena-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  # ══════════════════════════════════════════════════════════════════
+  # Frontend Service — Next.js
+  # ══════════════════════════════════════════════════════════════════
+  frontend:
+    build:
+      context: ./arena-frontend
+      dockerfile: Dockerfile
+    container_name: ai-arena-frontend
+    ports:
+      - "3000:3000"
+    environment:
+      NEXT_PUBLIC_API_URL: http://backend:8000
+    volumes:
+      - ./arena-frontend:/app
+    depends_on:
+      backend:
+        condition: service_healthy
+    networks:
+      - ai-arena-network
+    restart: unless-stopped
+
+networks:
+  ai-arena-network:
+    driver: bridge
+
+volumes:
+  backend-db:
+    driver: local
