@@ -1,15 +1,46 @@
 # Nivesha
 
-**Institutional signals for NSE stocks, explained simply.** Formerly *AI Investment Arena*; the v1 hedge-fund simulator lives on as the AI Arena tab. The in-app assistant is **Voxa**.
+**Institutional-grade stock signals for NSE, explained simply enough for a first-time investor.**
 
-Compete multiple LLM-driven investment strategies against each other in real-time. Watch different AI models manage portfolios with distinct philosophies, generate stock picks, and compete on a live performance leaderboard.
+Nivesha scores every NIFTY 500 stock nightly, estimates each one's odds of beating the market over the next three months, lets four AI portfolio managers compete with paper money, and answers questions about all of it through **Voxa**, an assistant that sees what is on your screen. Every number on every page can be traced back to a measurement, and every model is graded on data it never saw.
+
+> Educational simulation. Not investment advice. Past performance of simulated portfolios does not predict future results.
 
 ---
 
-## > **v2 is in progress.** The design lives in [docs/DESIGN.md](docs/DESIGN.md).
-> Phase 0 (data spine + Buy Rank + LangGraph explainer) is built; see *Running v2 locally* below.
+## What is inside
 
-## Running v2 locally
+| Tab | Question it answers | How |
+| --- | --- | --- |
+| **Strength Rank** | Which stocks are strongest today? | Seven price-derived factors (12-month and 6-month momentum, trend quality, calmness, liquidity, volume confirmation, overheat penalty), combined with TOPSIS into a 1–100 percentile. Bands Strong / Good / Neutral / Weak. Validated with a rolling information coefficient before it shipped. |
+| **3-Month Odds** | Which stocks have the best odds of beating the market? | A gradient-boosting model trained walk-forward on up to 20 years of history. Out-of-sample accuracy, calibration and the top-decile hit rate are printed on the page. Retrains itself weekly; every matured batch is scored against real prices. |
+| **AI Managers** | Which AI picks stocks best? | Four LLMs (GPT-4o mini, Gemini 2.5 Flash, Mistral Voxtral, DeepSeek V3.2) get the same shortlist and ₹1,00,000 of paper money each trading morning. A leaderboard and race chart track them. |
+| **Voxa** (every page) | Anything about the data on screen, a stock, or the markets | LangGraph agent: a light guard model screens each message, gpt-4o-mini answers with tools over the app's data and DuckDuckGo search. Threads are checkpointed in Postgres and compressed as they grow. |
+| **System** | Is everything running? | Scheduled jobs, open alerts, data freshness, AI spend against a daily rupee budget, and the self-maintaining NSE trading calendar. |
+
+Both signal pages carry a **prediction-versus-reality** chart: last month's bands followed to today, and the current odds batch tracked against the market.
+
+## Architecture
+
+```
+Next.js 14 (React, recharts)  ──HTTPS──▶  Caddy  ──▶  FastAPI + APScheduler  ──▶  PostgreSQL
+        pastel UI, glass tabs                   │            │
+                                                │            ├── quant/      factors, TOPSIS, predictor (scikit-learn)
+                                                │            ├── llm/        LangGraph graphs via one OpenAI-compatible gateway
+                                                │            ├── ops/        calendar, alerts, LLM metering, health checks
+                                                │            └── data/       NSE universe, Upstox / Yahoo daily bars
+                                                └── /api/*  (streaming-safe reverse proxy, basic auth)
+```
+
+- **Backend**: Python 3.12, FastAPI, SQLAlchemy 2 + Alembic, pandas, scikit-learn, LangChain / LangGraph 1.x, LangSmith tracing.
+- **Frontend**: Next.js 14 app router, TypeScript, recharts, a colour system where colour always carries a word.
+- **Data**: NSE constituent lists and holidays, Upstox Historical Candle V3 and LTP (Yahoo Finance as a dev fallback), 20 years of daily bars for the model.
+- **LLM**: any OpenAI-compatible gateway (AICredits by default) with automatic failover to a second provider (Groq, OpenAI, …). Every call is metered; a ₹5/day cap pauses optional AI features.
+- **Ops**: guarded scheduler jobs on every NSE trading day, alerts to Telegram / webhook, nightly Postgres backups, one-command deploy to a single EC2 instance on the AWS Free plan.
+
+The full design, including the reasoning behind each feature and what was deliberately rejected, is in [docs/DESIGN.md](docs/DESIGN.md).
+
+## Run it locally
 
 ```bash
 # 1. Postgres
@@ -18,438 +49,64 @@ docker compose up -d postgres
 # 2. Backend (Python 3.12)
 cd backend
 python3.12 -m venv .venv && .venv/bin/pip install -r requirements.txt
-cp .env.example .env                      # fill in AICREDITS_API_KEY, UPSTOX_ANALYTICS_TOKEN
-.venv/bin/alembic upgrade head            # schema
-.venv/bin/python -m jobs.nightly --source yahoo --backfill 250   # dev data, no Upstox token needed
-.venv/bin/python -m research.factor_eval  # does Buy Rank predict anything? (writes research/reports/)
+cp .env.example .env                       # add AICREDITS_API_KEY; UPSTOX_ANALYTICS_TOKEN optional
+.venv/bin/alembic upgrade head
+.venv/bin/python -m jobs.nightly --source yahoo --lookback-days 7300 --full --skip-rank   # 20 y of bars, ~15 min
+.venv/bin/python -m jobs.nightly --source yahoo --backfill 250                            # scores for the last year
+.venv/bin/python -m jobs.train_predictor                                                  # the 3-month model, ~2 min
 .venv/bin/uvicorn main:app --reload --port 8000
 
 # 3. Frontend
 cd ../arena-frontend
-npm install && npm run dev                # http://localhost:3000
+npm install && npm run dev                 # http://localhost:3000
 ```
-
-Production uses `--source upstox` (the scheduler runs it nightly at 20:15 IST).
-`GET /rank`, `GET /rank/{ticker}`, `GET /rank/{ticker}/explain` are the new endpoints;
-the v1 UI is kept at `/legacy` until each of its pages is rebuilt.
 
 Tests: `cd backend && .venv/bin/python -m pytest -q`.
+Research: `.venv/bin/python -m research.factor_eval` writes the factor evaluation report to `backend/research/reports/`.
 
-**Chat assistant.** The ✦ button on every page opens an assistant that sees the current screen,
-remembers the conversation (Postgres-checkpointed LangGraph thread), searches the web with
-DuckDuckGo, and reads the app's own data through tools. A lighter guard model
-(`CHAT_GUARD_MODEL`) screens every message before `CHAT_MODEL` answers. Set
-`LANGSMITH_TRACING=true` to see every turn as a trace named `chat.assistant`.
+### Configuration worth knowing
 
----
+| Variable | Purpose |
+| --- | --- |
+| `AICREDITS_BASE_URL`, `AICREDITS_API_KEY` | primary LLM gateway (`https://aicredits.in/v1`) |
+| `LLM_FALLBACK_BASE_URL/API_KEY/MODEL` | second provider used automatically while the primary is down |
+| `UPSTOX_ANALYTICS_TOKEN` | Upstox extended token for daily bars and quotes; Yahoo is used when absent |
+| `LLM_DAILY_BUDGET_INR` | hard daily cap on estimated AI spend (default 5) |
+| `LLM_CREDITS_INR`, `LLM_CREDITS_AS_OF` | your gateway balance once, for the run-out projection and low-credit alerts |
+| `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID`, `ALERT_WEBHOOK_URL` | where alerts are pushed |
+| `PREDICTOR_MAX_YEARS` | cap the model's training window (8 fits a 1 GB server) |
+| `LANGSMITH_TRACING`, `LANGSMITH_API_KEY` | trace every LLM graph run |
 
-📌 Overview
+## Deploy
 
-AI Investment Arena simulates a multi-manager hedge fund where different Large Language Models act as portfolio managers with unique investment styles.
-
-Each day:
-
-- Market data is collected from NSE stocks
-- Technical indicators are calculated
-- Stocks are ranked using TOPSIS
-- Multiple AI models build portfolios
-- Performance is tracked throughout the trading session
-- A live leaderboard ranks the best-performing AI manager
-
----
-
-## 🎯 Key Features
-
-### 🤖 Multiple AI Portfolio Managers
-
-| Model | Philosophy |
-|---|---|
-| GPT-4o Mini | Quantitative & Risk-Adjusted |
-| Gemini 2.5 Flash | Aggressive Growth |
-| Mistral Voxtral | Conservative Value |
-| DeepSeek V4 | Pure Data-Driven TOPSIS |
-
-### 📈 Real-Time Market Data
-
-- Upstox API Integration
-- NSE Live Quotes
-- Historical Candle Data
-- Instrument Key Resolution
-- Multi-Level Caching System
-- Automatic Fallback Mechanisms
-
-### 📊 Technical Analysis Engine
-
-The ranking engine computes:
-
-| Indicator | Description |
-|---|---|
-| RSI | 14-period Relative Strength Index |
-| SMA 20 | 20-period Simple Moving Average |
-| SMA 50 | 50-period Simple Moving Average |
-| Volatility | Annualized Volatility |
-| Volume Ratio | Relative volume vs average |
-| Trend Score | Composite trend direction |
-| 1-Month Return | Rolling 1-month price return |
-| TOPSIS Score | Final multi-factor ranking |
-
-### 💰 Portfolio Simulation
-
-```
-Market Open → Generate AI Portfolios → Lock Entry Prices
-     → Track Intraday Prices → Calculate P&L → Update Leaderboard
-```
-
-### 🏆 Live Leaderboard
-
-- Daily Returns
-- Monthly Returns
-- All-Time Returns
-- Portfolio Value
-- Unrealized P&L
-- Model Rankings
-
-### ⚙️ Manual Controls
-
-Administrative endpoints allow manual portfolio generation, valuation updates, TOPSIS testing, and portfolio recalculation — without breaking portfolio integrity.
-
----
-
-## 🏗️ System Architecture
-
-```
-                    ┌─────────────────┐
-                    │   Scheduler     │
-                    │  APScheduler    │
-                    └────────┬────────┘
-                             │
-                             ▼
-┌────────────────────────────────────────────────────┐
-│                 FastAPI Backend                    │
-├────────────────────────────────────────────────────┤
-│                                                    │
-│  Routes                                            │
-│  ├── /market                                       │
-│  ├── /portfolios                                   │
-│  ├── /leaderboard                                  │
-│  └── /admin/*                                      │
-│                                                    │
-│  Services                                          │
-│  ├── market_data.py                                │
-│  ├── llm_portfolio.py                              │
-│  └── valuation.py                                  │
-│                                                    │
-│  Database                                          │
-│  ├── Portfolio                                     │
-│  ├── Holding                                       │
-│  ├── DailyValuation                                │
-│  └── MarketSnapshot                                │
-└────────────────────────────────────────────────────┘
-             │                        │
-             ▼                        ▼
-      ┌─────────────┐       ┌──────────────────┐
-      │ Upstox API  │       │  LLM Providers   │
-      └─────────────┘       ├──────────────────┤
-                            │ OpenAI           │
-                            │ Gemini           │
-                            │ Mistral          │
-                            │ DeepSeek         │
-                            └──────────────────┘
-```
-
----
-
-## 🚀 Quick Start
-
-### 1. Clone Repository
+One `t3.micro` runs everything for about $14/month of AWS Free-plan credits. Two commands from a laptop; the runbook with the console steps is [docs/DEPLOY_AWS.md](docs/DEPLOY_AWS.md).
 
 ```bash
-git clone https://github.com/yourusername/ai-investment-arena.git
-cd ai-investment-arena
+FIRST=1 DOMAIN=<host> AUTH_USER=<you> AUTH_PASS='<strong>' infra/deploy.sh ubuntu@<ip> --with-data   # first time
+infra/deploy.sh ubuntu@<ip>                                                                          # every later push
 ```
 
-### 2. Create Virtual Environment
+## Honesty notes
 
-```bash
-python -m venv venv
-source venv/bin/activate        # Linux/macOS
-# venv\Scripts\activate         # Windows
-```
+- The Strength Score describes today; it does not predict. Its validation (rolling IC ≈ 0.06, t ≈ 9 on the first run) is a research artefact in the repo, not a promise.
+- The 3-month model is only a little better than a coin flip on single stocks (≈ 51 % out of sample). Its usable edge is in the top-odds group, which beat the market in 13 of 16 test years by about 1.4 % per quarter. The page says exactly this.
+- History is that of today's NIFTY 500 members, so survivorship bias flatters absolute returns; comparisons between bands are less affected.
+- Voxa never invents numbers: explanations are audited against the factor table, and answers cite the tool or web source they came from.
 
-### 3. Install Dependencies
-
-```bash
-pip install -r requirements.txt
-```
-
-### 4. Configure Environment Variables
-
-Create a `.env` file:
-
-```env
-DATABASE_URL=postgresql://user:password@localhost:5432/ai_investment_arena
-
-UPSTOX_ANALYTICS_TOKEN=your_token
-
-AICREDITS_BASE_URL=https://api.aicredits.com/v1
-AICREDITS_API_KEY=your_api_key
-
-SCHEDULER_TIMEZONE=Asia/Kolkata
-
-TOP_CANDIDATES=15
-STARTING_CAPITAL=100000
-```
-
-### 5. Initialize Database
-
-```bash
-python -c "
-from database import Base, engine
-Base.metadata.create_all(bind=engine)
-"
-```
-
-### 6. Start Server
-
-```bash
-uvicorn main:app --reload
-```
-
-- App: [http://localhost:8000](http://localhost:8000)
-- Swagger Docs: [http://localhost:8000/docs](http://localhost:8000/docs)
-
----
-
-## 📡 API Endpoints
-
-### Market Data
-
-```http
-GET /market
-```
-
-Returns latest TOPSIS-ranked stock candidates.
-
-### Portfolios
-
-```http
-GET /portfolios
-GET /portfolios/{id}
-```
-
-### Leaderboard
-
-```http
-GET /leaderboard
-```
-
-Returns daily, monthly, and all-time rankings.
-
-### Admin
-
-```http
-POST /admin/simulate-and-save   # Generate portfolios
-POST /admin/update-valuations   # Update valuations
-POST /admin/simulate            # Run TOPSIS only
-```
-
----
-
-## 🔄 Daily Workflow
-
-### Morning Session — 09:25 AM IST
+## Repository map
 
 ```
-Fetch Market Data → Compute Indicators → TOPSIS Ranking
-     → Top 15 Stocks → LLM Portfolio Generation → Save Portfolios
+backend/        FastAPI app, quant, llm graphs, ops, jobs, tests, alembic migrations
+arena-frontend/ Next.js app (Strength Rank, 3-Month Odds, AI Managers, System, Voxa dock)
+infra/          deploy.sh, EC2 bootstrap/update/backup scripts, systemd units, Caddyfile
+docs/           DESIGN.md (the why), DEPLOY_AWS.md (the how)
+Documentation/  original v1 notes, kept for reference
 ```
 
-### Closing Session — 03:35 PM IST
+## Lineage
 
-```
-Fetch Latest Prices → Update Holdings → Calculate P&L
-     → Store Valuations → Update Leaderboard
-```
+Nivesha grew out of *AI Investment Arena*, a FastAPI + Next.js hedge-fund simulator; that project's four-manager competition lives on as the AI Managers tab, and its original interface is kept at `/legacy`.
 
----
+## License
 
-## 📊 TOPSIS Ranking Methodology
-
-| Factor | Weight |
-|---|---|
-| 1-Month Return | 30% |
-| Volume Ratio | 20% |
-| Trend Score | 20% |
-| RSI Score | 15% |
-| Volatility | 15% |
-
-Stocks receive a final score between `0.0` and `1.0`. Top-ranked stocks are passed to AI portfolio managers.
-
----
-
-## 🗄️ Database Schema
-
-### Portfolio
-
-```
-Portfolio
-├── model
-├── date
-├── starting_capital
-├── total_invested
-├── remaining_cash
-├── strategy_summary
-└── holdings[]
-```
-
-### Holding
-
-```
-Holding
-├── ticker
-├── quantity
-├── entry_price
-├── allocation_percent
-├── confidence
-└── reasoning
-```
-
-### DailyValuation
-
-```
-DailyValuation
-├── portfolio_value
-├── return_pct
-├── unrealized_pnl
-└── per_holding_pnl
-```
-
----
-
-## ⚙️ Configuration
-
-### Supported Models
-
-```python
-SUPPORTED_MODELS = {
-    "gpt":      "gpt-4o-mini",
-    "gemini":   "gemini-2.5-flash",
-    "mistral":  "voxtral-small",
-    "deepseek": "deepseek-v4"
-}
-```
-
-### Scheduler Jobs
-
-```
-09:25 AM IST  →  morning_job()
-03:35 PM IST  →  close_job()
-```
-
----
-
-## 📈 Performance Metrics
-
-| Metric | Description |
-|---|---|
-| Daily Return % | Single-day gain/loss |
-| Monthly Return % | Rolling 30-day performance |
-| Cumulative Return | All-time return since inception |
-| Sharpe Ratio | Risk-adjusted return |
-| Max Drawdown | Largest peak-to-trough decline |
-| Win Rate | % of profitable trading days |
-
----
-
-## 🧪 Project Structure
-
-```
-ai-investment-arena/
-│
-├── main.py
-├── config.py
-├── database.py
-├── scheduler.py
-│
-├── routes/
-│   ├── market.py
-│   ├── portfolios.py
-│   ├── leaderboard.py
-│   └── admin.py
-│
-├── services/
-│   ├── market_data.py
-│   ├── llm_portfolio.py
-│   └── valuation.py
-│
-├── requirements.txt
-├── .env.example
-└── README.md
-```
-
----
-
-## 🔐 Security
-
-- Environment-based secrets
-- Database connection isolation
-- Input validation via Pydantic
-- Configurable CORS
-- Rate limiting support
-
----
-
-## 🛣️ Roadmap
-
-- [ ] Telegram Alerts
-- [ ] Email Notifications
-- [ ] Historical Backtesting
-- [ ] Sharpe & Sortino Analysis
-- [ ] MACD & Bollinger Bands
-- [ ] React Dashboard
-- [ ] Full Test Coverage
-
----
-
-## 🤝 Contributing
-
-1. Fork the repository
-2. Create a feature branch (`git checkout -b feature/amazing-feature`)
-3. Commit your changes (`git commit -m 'Add amazing feature'`)
-4. Push to the branch (`git push origin feature/amazing-feature`)
-5. Open a Pull Request
-
-Contributions are welcome!
-
----
-
-## 📄 License
-
-Released under the [MIT License](LICENSE).
-
----
-
-## 🎓 What You'll Learn
-
-- Multi-LLM Systems
-- Quantitative Finance
-- Portfolio Simulation
-- TOPSIS Ranking
-- FastAPI
-- SQLAlchemy
-- APScheduler
-- Real-Time Data Pipelines
-
----
-
-## ⭐ Support the Project
-
-If you found this project useful, please consider:
-
-- ⭐ Starring the repository
-- 🍴 Forking it
-- 🛠️ Contributing
-
----
-
-*Built for AI, Finance, and Quantitative Investing Enthusiasts. 🚀*
+MIT.
