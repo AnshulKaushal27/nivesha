@@ -31,13 +31,24 @@ def llm_heartbeat() -> dict:
     if not llm_available():
         raise_alert("llm_auth_failed", "No AICREDITS_API_KEY configured; every AI feature is off.", "critical")
         return {"ok": False, "kind": "llm_auth_failed"}
+    from llm.gateway import fallback_configured, mark_primary_down, mark_primary_up, provider_status
+    mark_primary_up()                               # the heartbeat always probes the primary first
     try:
         llm = chat(model=settings.CHAT_GUARD_MODEL, temperature=0, max_tokens=5, max_retries=1, read_timeout=20.0).with_config(tags=["heartbeat"])
         llm.invoke([("user", "Reply with the single word OK.")])
     except Exception as exc:                        # noqa: BLE001
         kind, severity = classify_llm_error(exc)
-        raise_alert(kind, f"{KIND_HELP.get(kind, 'LLM heartbeat failed.')}", severity, detail=f"{type(exc).__name__}: {exc}"[:1500])
-        return {"ok": False, "kind": kind, "error": str(exc)[:300]}
+        note = ""
+        if fallback_configured():
+            mark_primary_down()
+            try:
+                chat(temperature=0, max_tokens=5, max_retries=1, read_timeout=20.0).with_config(tags=["heartbeat"]).invoke([("user", "Reply with the single word OK.")])
+                note = f" Running on the fallback provider ({settings.LLM_FALLBACK_MODEL}) meanwhile."
+                severity = "info" if severity == "warning" else severity
+            except Exception as exc2:               # noqa: BLE001
+                note = f" The fallback provider failed too ({type(exc2).__name__})."
+        raise_alert(kind, f"{KIND_HELP.get(kind, 'LLM heartbeat failed.')}{note}", severity, detail=f"{type(exc).__name__}: {exc}"[:1500])
+        return {"ok": False, "kind": kind, "error": str(exc)[:300], "provider": provider_status()}
     for k in ("credits_exhausted", "llm_auth_failed", "llm_gateway_down", "llm_rate_limited", "llm_error"):
         resolve(k)
     from ops.llm_usage import budget_status

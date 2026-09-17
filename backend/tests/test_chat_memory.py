@@ -85,3 +85,43 @@ def test_transient_detection_walks_the_cause_chain():
     except RuntimeError as exc:
         assert _is_transient(exc)
     assert not _is_transient(ValueError("schema"))
+
+
+def test_failover_switches_to_fallback_once(monkeypatch):
+    """Primary fails every attempt → with a fallback configured, fn is retried once on the fallback."""
+    import llm.gateway as gw
+    monkeypatch.setattr(chat.settings, "CHAT_LLM_ATTEMPTS", 2)
+    monkeypatch.setattr(gw.settings, "LLM_FALLBACK_BASE_URL", "https://fallback.example/v1")
+    monkeypatch.setattr(gw.settings, "LLM_FALLBACK_API_KEY", "k")
+    monkeypatch.setattr(gw.settings, "LLM_FALLBACK_MODEL", "fb-model")
+    monkeypatch.setattr(chat, "_breaker_open_until", 0.0)
+    monkeypatch.setattr(chat.time, "sleep", lambda *_: None)
+    gw.mark_primary_up()
+    calls = []
+
+    def fn():
+        calls.append(gw.using_fallback())
+        if not gw.using_fallback():
+            raise ConnectionError("primary reset by peer")
+        return "answer from fallback"
+
+    assert chat._with_retry(fn, "test") == "answer from fallback"
+    assert calls == [False, False, True]          # two primary attempts, then one on the fallback
+    assert gw.using_fallback()
+    gw.mark_primary_up()
+
+
+def test_no_fallback_configured_trips_breaker(monkeypatch):
+    import llm.gateway as gw
+    monkeypatch.setattr(chat.settings, "CHAT_LLM_ATTEMPTS", 2)
+    monkeypatch.setattr(gw.settings, "LLM_FALLBACK_BASE_URL", "")
+    monkeypatch.setattr(chat, "_breaker_open_until", 0.0)
+    monkeypatch.setattr(chat.time, "sleep", lambda *_: None)
+    gw.mark_primary_up()
+    import pytest
+    with pytest.raises(ConnectionError):
+        chat._with_retry(lambda: (_ for _ in ()).throw(ConnectionError("down")), "test")
+    assert chat._breaker_open()
+    with pytest.raises(chat.GatewayDown):
+        chat._with_retry(lambda: "never called", "test")
+    monkeypatch.setattr(chat, "_breaker_open_until", 0.0)

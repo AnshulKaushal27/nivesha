@@ -19,6 +19,14 @@ class Settings(BaseSettings):
     LLM_STRUCTURED_METHOD: str = "json_schema"  # json_schema | function_calling | json_mode
     LLM_TEMPERATURE: float = 0.3
 
+    # ── Fallback provider: used automatically while the primary gateway is down ──
+    # Any OpenAI-compatible endpoint: OpenAI itself, Groq (https://api.groq.com/openai/v1), OpenRouter, …
+    LLM_FALLBACK_BASE_URL: str = ""
+    LLM_FALLBACK_API_KEY: str = ""
+    LLM_FALLBACK_MODEL: str = ""                # one model used for every call while on fallback
+    LLM_FALLBACK_STRUCTURED_METHOD: str = "function_calling"
+    LLM_FAILOVER_SECONDS: int = 300             # stay on the fallback this long after a primary failure
+
     # ── Chat assistant ─────────────────────────────────────────────────
     CHAT_MODEL: str = "gpt-4o-mini"               # answers
     CHAT_GUARD_MODEL: str = "openai/gpt-4.1-nano" # screens every prompt first

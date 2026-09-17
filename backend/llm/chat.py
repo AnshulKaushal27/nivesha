@@ -68,20 +68,36 @@ def _trip_breaker() -> None:
 
 
 def _with_retry(fn, what: str):
-    """Call fn() up to CHAT_LLM_ATTEMPTS times on transient gateway errors, with backoff."""
-    if _breaker_open():
+    """
+    Call fn() up to CHAT_LLM_ATTEMPTS times on transient gateway errors, with backoff.
+    When the primary gateway fails all retries and a fallback provider is configured, the
+    failover is switched on and `fn` is tried once more (it rebuilds its model on the fallback).
+    """
+    from llm.gateway import fallback_configured, mark_primary_down, mark_primary_up, using_fallback
+
+    if _breaker_open() and not using_fallback():
         raise GatewayDown("gateway circuit breaker open")
     last = None
     for attempt in range(1, settings.CHAT_LLM_ATTEMPTS + 1):
         try:
-            return fn()
+            out = fn()
+            if not using_fallback():
+                mark_primary_up()
+            return out
         except Exception as exc:                        # noqa: BLE001
             last = exc
             if not _is_transient(exc):
                 raise
             if attempt == settings.CHAT_LLM_ATTEMPTS:
+                if not using_fallback() and fallback_configured():
+                    logger.warning("%s: primary gateway down — switching to fallback provider %s", what, settings.LLM_FALLBACK_MODEL)
+                    mark_primary_down()
+                    try:
+                        return fn()                     # fn() builds a fresh model → now on the fallback
+                    except Exception as exc2:           # noqa: BLE001
+                        last = exc2
                 _trip_breaker()
-                raise
+                raise last
             wait = 1.0 * attempt
             logger.warning("%s: transient gateway error (%s), retry %d/%d in %.1fs", what, type(exc).__name__, attempt, settings.CHAT_LLM_ATTEMPTS, wait)
             time.sleep(wait)
@@ -233,9 +249,11 @@ def guard(state: ChatState) -> ChatState:
             f"Recent conversation:\n{ctx or '(none)'}\n\nLatest user message:\n{text}")
 
     try:
-        llm = structured(GuardVerdict, model=settings.CHAT_GUARD_MODEL, temperature=0, max_tokens=200,
-                         max_retries=1, read_timeout=20.0).with_config(tags=["guard"])
-        v: GuardVerdict = _with_retry(lambda: llm.invoke([("system", GUARD_SYSTEM), ("user", user)]), "guard")
+        def _ask():
+            llm = structured(GuardVerdict, model=settings.CHAT_GUARD_MODEL, temperature=0, max_tokens=200,
+                             max_retries=1, read_timeout=20.0).with_config(tags=["guard"])
+            return llm.invoke([("system", GUARD_SYSTEM), ("user", user)])
+        v: GuardVerdict = _with_retry(_ask, "guard")
         verdict = v.model_dump()
     except Exception as exc:                            # noqa: BLE001 — a guard outage must not break chat
         logger.warning("guard model failed (%s); allowing with main-model rules", exc)
@@ -295,8 +313,10 @@ def compress(state: ChatState) -> ChatState:
     user = f"Existing note:\n{existing}\n\nNew turns to fold in:\n{transcript}\n\nWrite the updated note."
 
     try:
-        llm = chat_model(model=settings.CHAT_GUARD_MODEL, temperature=0, max_tokens=350, max_retries=1, read_timeout=30.0).with_config(tags=["compress"])
-        new_summary = _with_retry(lambda: llm.invoke([("system", SUMMARY_SYSTEM), ("user", user)]).content, "compress").strip()
+        def _ask():
+            llm = chat_model(model=settings.CHAT_GUARD_MODEL, temperature=0, max_tokens=350, max_retries=1, read_timeout=30.0).with_config(tags=["compress"])
+            return llm.invoke([("system", SUMMARY_SYSTEM), ("user", user)]).content
+        new_summary = _with_retry(_ask, "compress").strip()
     except Exception as exc:                            # noqa: BLE001 — keep going with the raw history this turn
         logger.warning("compression failed (%s); keeping full history this turn", exc)
         return {}
@@ -318,9 +338,12 @@ def agent(state: ChatState) -> ChatState:
     summary_block = f"\nEARLIER IN THIS CONVERSATION (compressed memory)\n{summary}\n" if summary else ""
     system = AGENT_SYSTEM.format(today=date.today().isoformat(), screen=_render_screen(state.get("screen")), summary_block=summary_block)
     history = _trim(state["messages"], settings.CHAT_MAX_HISTORY)
-    llm = chat_model(model=settings.CHAT_MODEL, temperature=0.3, max_tokens=900, max_retries=1, read_timeout=60.0).bind_tools(TOOLS).with_config(tags=["chat"])
+
+    def _ask():
+        llm = chat_model(model=settings.CHAT_MODEL, temperature=0.3, max_tokens=900, max_retries=1, read_timeout=60.0).bind_tools(TOOLS).with_config(tags=["chat"])
+        return llm.invoke([SystemMessage(content=system), *history])
     try:
-        resp = _with_retry(lambda: llm.invoke([SystemMessage(content=system), *history]), "agent")
+        resp = _with_retry(_ask, "agent")
     except Exception as exc:                            # noqa: BLE001
         if not _is_transient(exc):
             raise

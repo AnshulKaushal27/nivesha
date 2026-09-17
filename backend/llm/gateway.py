@@ -23,9 +23,39 @@ from config import settings
 
 PROJECT_TAG = "nivesha"
 
+# ── Failover between the primary gateway and an optional fallback provider ──
+import time as _time
+
+_primary_down_until = 0.0
+
+
+def fallback_configured() -> bool:
+    return bool(settings.LLM_FALLBACK_BASE_URL and settings.LLM_FALLBACK_API_KEY and settings.LLM_FALLBACK_MODEL)
+
+
+def mark_primary_down() -> None:
+    """Called when the primary gateway fails all retries; routes calls to the fallback for a while."""
+    global _primary_down_until
+    _primary_down_until = _time.monotonic() + settings.LLM_FAILOVER_SECONDS
+
+
+def mark_primary_up() -> None:
+    global _primary_down_until
+    _primary_down_until = 0.0
+
+
+def using_fallback() -> bool:
+    return fallback_configured() and _time.monotonic() < _primary_down_until
+
+
+def provider_status() -> dict:
+    return {"primary": settings.AICREDITS_BASE_URL, "fallback_configured": fallback_configured(),
+            "on_fallback": using_fallback(), "fallback_model": settings.LLM_FALLBACK_MODEL or None,
+            "failover_ends_in_s": max(0, int(_primary_down_until - _time.monotonic())) if using_fallback() else 0}
+
 
 def llm_available() -> bool:
-    return bool(settings.AICREDITS_API_KEY and settings.AICREDITS_API_KEY != "replace-me")
+    return bool(settings.AICREDITS_API_KEY and settings.AICREDITS_API_KEY != "replace-me") or fallback_configured()
 
 
 def tracing_enabled() -> bool:
@@ -44,10 +74,15 @@ def chat(
     Every call is metered (tokens, estimated cost) by ops.llm_usage."""
     from ops.llm_usage import recorder
     callbacks = list(kwargs.pop("callbacks", []) or []) + [recorder]
+    if using_fallback():
+        # every call goes to the fallback provider with its single model until the failover window ends
+        model, api_key, base_url = settings.LLM_FALLBACK_MODEL, settings.LLM_FALLBACK_API_KEY, settings.LLM_FALLBACK_BASE_URL
+    else:
+        model, api_key, base_url = model or settings.LLM_MODEL, settings.AICREDITS_API_KEY or "missing", settings.AICREDITS_BASE_URL
     return ChatOpenAI(
-        model=model or settings.LLM_MODEL,
-        api_key=settings.AICREDITS_API_KEY or "missing",
-        base_url=settings.AICREDITS_BASE_URL,
+        model=model,
+        api_key=api_key,
+        base_url=base_url,
         temperature=settings.LLM_TEMPERATURE if temperature is None else temperature,
         max_tokens=max_tokens,
         timeout=httpx.Timeout(read_timeout, connect=5.0),
@@ -70,7 +105,7 @@ def structured(
     Set LLM_STRUCTURED_METHOD=function_calling for a gateway or model that
     lacks strict JSON-schema support.
     """
-    method = method or settings.LLM_STRUCTURED_METHOD
+    method = method or (settings.LLM_FALLBACK_STRUCTURED_METHOD if using_fallback() else settings.LLM_STRUCTURED_METHOD)
     llm = chat(model=model, **kwargs)   # kwargs may carry max_retries / read_timeout
     opts: dict[str, Any] = {"method": method}
     if method == "json_schema":

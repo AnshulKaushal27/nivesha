@@ -15,6 +15,14 @@ import type { Band } from "@/lib/api";
 import { BAND, fmtDate, fmtPct } from "@/lib/signals";
 
 const TIP = { borderRadius: 12, border: "1px solid var(--border)", background: "var(--card)", boxShadow: "var(--shadow-lg)", fontSize: 12, color: "var(--text)" };
+// Recharts paints tooltip rows in the series colour and falls back to black when a bar is
+// coloured per cell — unreadable in dark mode. Force theme ink on every row and label.
+const TIP_PROPS = {
+  contentStyle: TIP,
+  itemStyle: { color: "var(--text)", fontWeight: 600 },
+  labelStyle: { color: "var(--text-muted)", marginBottom: 4 },
+  wrapperStyle: { outline: "none" },
+} as const;
 const AXIS = { fontSize: 11, fill: "var(--text-muted)" };
 const pct0 = (v: number) => `${Math.round(v * 100)}%`;
 
@@ -34,7 +42,7 @@ export function BandDonut({ counts, total }: { counts: Record<string, number>; t
             <Pie data={data} dataKey="value" innerRadius={48} outerRadius={70} paddingAngle={2} stroke="var(--card)" strokeWidth={2} isAnimationActive={false}>
               {data.map((d) => <Cell key={d.name} fill={BAND[d.name as Band].fill} />)}
             </Pie>
-            <Tooltip contentStyle={TIP} formatter={(v: number, n: string) => [`${v} stocks`, n]} />
+            <Tooltip {...TIP_PROPS} formatter={(v: number, n: string) => [`${v} stocks`, n]} />
           </PieChart>
         </ResponsiveContainer>
         <div style={{ position: "absolute", inset: 0, display: "grid", placeItems: "center", pointerEvents: "none", textAlign: "center" }}>
@@ -66,7 +74,7 @@ export function SectorBars({ rows, valueKey = "avg_rank", label = "avg rank", ma
         <CartesianGrid horizontal={false} stroke="var(--grid)" />
         <XAxis type="number" tick={AXIS} axisLine={false} tickLine={false} tickFormatter={fmt} />
         <YAxis type="category" dataKey="sector" width={150} tick={{ ...AXIS, fill: "var(--text-2)" }} axisLine={false} tickLine={false} />
-        <Tooltip contentStyle={TIP} cursor={{ fill: "var(--card2)" }} formatter={(v: number) => [fmt(v), label]} />
+        <Tooltip {...TIP_PROPS} cursor={{ fill: "var(--card2)" }} formatter={(v: number) => [fmt(v), label]} />
         <Bar dataKey={valueKey} fill="var(--good)" radius={[0, 4, 4, 0]} isAnimationActive={false} label={{ position: "right", fontSize: 11, fill: "var(--text-2)", formatter: (v: number) => fmt(v) }} />
       </BarChart>
     </Box>
@@ -84,7 +92,7 @@ export function RankHistogram({ ranks, regime = null }: { ranks: number[]; regim
         <CartesianGrid vertical={false} stroke="var(--grid)" />
         <XAxis dataKey="name" tick={AXIS} axisLine={{ stroke: "var(--axis)" }} tickLine={false} interval={0} />
         <YAxis tick={AXIS} axisLine={false} tickLine={false} allowDecimals={false} />
-        <Tooltip contentStyle={TIP} cursor={{ fill: "var(--card2)" }} formatter={(v: number, _n, p) => [`${v} stocks`, `Rank ${p.payload.name} · ${p.payload.band}`]} />
+        <Tooltip {...TIP_PROPS} cursor={{ fill: "var(--card2)" }} formatter={(v: number, _n, p) => [`${v} stocks`, `Rank ${p.payload.name} · ${p.payload.band}`]} />
         <Bar dataKey="n" radius={[4, 4, 0, 0]} isAnimationActive={false} label={{ position: "top", fontSize: 10.5, fill: "var(--text-muted)" }}>
           {data.map((d) => <Cell key={d.name} fill={BAND[d.band].fill} />)}
         </Bar>
@@ -111,7 +119,7 @@ export function MoversChart({ risers, fallers }: {
         <XAxis type="number" domain={[-max, max]} tick={AXIS} axisLine={false} tickLine={false} tickFormatter={(v: number) => `${v > 0 ? "+" : ""}${v}`} />
         <YAxis type="category" dataKey="name" width={96} tick={{ ...AXIS, fill: "var(--text-2)", fontWeight: 700 }} axisLine={false} tickLine={false} />
         <ReferenceLine x={0} stroke="var(--axis)" />
-        <Tooltip contentStyle={TIP} cursor={{ fill: "var(--card2)" }} formatter={(v: number, _n, p) => [`${v > 0 ? "+" : ""}${v} points (${p.payload.from_rank} → ${p.payload.to_rank})`, "Rank change"]} />
+        <Tooltip {...TIP_PROPS} cursor={{ fill: "var(--card2)" }} formatter={(v: number, _n, p) => [`${v > 0 ? "+" : ""}${v} points (${p.payload.from_rank} → ${p.payload.to_rank})`, "Rank change"]} />
         <Bar dataKey="change" radius={4} isAnimationActive={false} label={{ position: "right", fontSize: 11, fill: "var(--text-2)", formatter: (v: number) => `${v > 0 ? "+" : ""}${v}` }}>
           {data.map((d) => <Cell key={d.name} fill={d.change >= 0 ? "var(--strong)" : "var(--weak)"} />)}
         </Bar>
@@ -149,7 +157,7 @@ export function OddsHistogram({ probs }: { probs: number[] }) {
         <XAxis dataKey="name" tick={AXIS} axisLine={{ stroke: "var(--axis)" }} tickLine={false} />
         <YAxis tick={AXIS} axisLine={false} tickLine={false} allowDecimals={false} />
         <ReferenceLine x="50%" stroke="var(--axis)" strokeDasharray="4 4" label={{ value: "coin flip", position: "top", fontSize: 10, fill: "var(--text-muted)" }} />
-        <Tooltip contentStyle={TIP} cursor={{ fill: "var(--card2)" }} formatter={(v: number, _n, p) => [`${v} stocks`, `odds ${p.payload.name}–${parseInt(p.payload.name) + 5}%`]} />
+        <Tooltip {...TIP_PROPS} cursor={{ fill: "var(--card2)" }} formatter={(v: number, _n, p) => [`${v} stocks`, `odds ${p.payload.name}–${parseInt(p.payload.name) + 5}%`]} />
         <Bar dataKey="n" radius={[4, 4, 0, 0]} isAnimationActive={false}>
           {data.map((d) => <Cell key={d.name} fill={`var(--${d.tone})`} />)}
         </Bar>
@@ -167,7 +175,7 @@ export function CalibrationChart({ rows }: { rows: { bin_lo: number; bin_hi: num
         <CartesianGrid vertical={false} stroke="var(--grid)" />
         <XAxis dataKey="name" tick={AXIS} axisLine={{ stroke: "var(--axis)" }} tickLine={false} />
         <YAxis domain={[0, 1]} tickFormatter={pct0} tick={AXIS} axisLine={false} tickLine={false} />
-        <Tooltip contentStyle={TIP} cursor={{ fill: "var(--card2)" }} formatter={(v: number, n: string) => [pct0(v), n === "said" ? "Model said" : "Actually beat market"]} />
+        <Tooltip {...TIP_PROPS} cursor={{ fill: "var(--card2)" }} formatter={(v: number, n: string) => [pct0(v), n === "said" ? "Model said" : "Actually beat market"]} />
         <Legend formatter={(v: string) => <span style={{ color: "var(--text-2)", fontSize: 12 }}>{v === "said" ? "Model said" : "Actually happened"}</span>} />
         <Bar dataKey="happened" fill="var(--series-1)" radius={[4, 4, 0, 0]} isAnimationActive={false} />
         <Line dataKey="said" stroke="var(--series-2)" strokeWidth={2} dot={{ r: 4, strokeWidth: 2, stroke: "var(--card)" }} isAnimationActive={false} />
@@ -185,7 +193,7 @@ export function FoldsChart({ folds }: { folds: { year: number; accuracy: number;
         <XAxis dataKey="year" tick={AXIS} axisLine={{ stroke: "var(--axis)" }} tickLine={false} />
         <YAxis domain={[0.4, 0.65]} tickFormatter={pct0} tick={AXIS} axisLine={false} tickLine={false} />
         <ReferenceLine y={0.5} stroke="var(--axis)" strokeDasharray="4 4" label={{ value: "coin flip", position: "insideTopLeft", fontSize: 10, fill: "var(--text-muted)" }} />
-        <Tooltip contentStyle={TIP} cursor={{ fill: "var(--card2)" }} formatter={(v: number, n: string) => [pct0(v), n === "accuracy" ? "Accuracy" : "Top-odds beat market"]} />
+        <Tooltip {...TIP_PROPS} cursor={{ fill: "var(--card2)" }} formatter={(v: number, n: string) => [pct0(v), n === "accuracy" ? "Accuracy" : "Top-odds beat market"]} />
         <Legend formatter={(v: string) => <span style={{ color: "var(--text-2)", fontSize: 12 }}>{v === "accuracy" ? "Accuracy, all stocks" : "Top-odds group beat market"}</span>} />
         <Bar dataKey="accuracy" radius={[4, 4, 0, 0]} isAnimationActive={false}>
           {folds.map((f) => <Cell key={f.year} fill={f.accuracy >= 0.5 ? "var(--series-1)" : "var(--weak)"} />)}
@@ -206,7 +214,7 @@ export function ProfileChart({ profiles }: { profiles: { label: string; high_pro
         <XAxis type="number" domain={[0.3, 0.7]} tickFormatter={pct0} tick={AXIS} axisLine={false} tickLine={false} />
         <YAxis type="category" dataKey="name" width={170} tick={{ ...AXIS, fill: "var(--text-2)" }} axisLine={false} tickLine={false} />
         <ReferenceLine x={0.5} stroke="var(--axis)" strokeDasharray="4 4" />
-        <Tooltip contentStyle={TIP} cursor={{ fill: "var(--card2)" }} formatter={(v: number, n: string) => [pct0(v), `${n} on this trait`]} />
+        <Tooltip {...TIP_PROPS} cursor={{ fill: "var(--card2)" }} formatter={(v: number, n: string) => [pct0(v), `${n} on this trait`]} />
         <Legend formatter={(v: string) => <span style={{ color: "var(--text-2)", fontSize: 12 }}>{v === "High" ? "Stocks high on the trait" : "Stocks low on the trait"}</span>} />
         <Bar dataKey="High" fill="var(--series-1)" radius={[0, 4, 4, 0]} isAnimationActive={false} label={{ position: "right", fontSize: 10.5, fill: "var(--text-2)", formatter: pct0 }} />
         <Bar dataKey="Low" fill="var(--series-2)" radius={[0, 4, 4, 0]} isAnimationActive={false} label={{ position: "right", fontSize: 10.5, fill: "var(--text-2)", formatter: pct0 }} />
@@ -224,7 +232,7 @@ export function BaseRateChart({ rows }: { rows: { band: string; hit_rate: number
         <XAxis dataKey="band" tick={AXIS} axisLine={{ stroke: "var(--axis)" }} tickLine={false} />
         <YAxis domain={[0, 1]} tickFormatter={pct0} tick={AXIS} axisLine={false} tickLine={false} />
         <ReferenceLine y={0.5} stroke="var(--axis)" strokeDasharray="4 4" />
-        <Tooltip contentStyle={TIP} cursor={{ fill: "var(--card2)" }} formatter={(v: number, n: string) => [pct0(v), n === "hit_rate" ? "Went up" : "Beat the market"]} />
+        <Tooltip {...TIP_PROPS} cursor={{ fill: "var(--card2)" }} formatter={(v: number, n: string) => [pct0(v), n === "hit_rate" ? "Went up" : "Beat the market"]} />
         <Legend formatter={(v: string) => <span style={{ color: "var(--text-2)", fontSize: 12 }}>{v === "hit_rate" ? "Went up" : "Beat the market"}</span>} />
         <Bar dataKey="hit_rate" fill="var(--series-1)" radius={[4, 4, 0, 0]} isAnimationActive={false} label={{ position: "top", fontSize: 10.5, fill: "var(--text-muted)", formatter: pct0 }} />
         <Bar dataKey="beat_market_rate" fill="var(--series-3)" radius={[4, 4, 0, 0]} isAnimationActive={false} label={{ position: "top", fontSize: 10.5, fill: "var(--text-muted)", formatter: pct0 }} />
@@ -242,7 +250,7 @@ export function LiveScoreChart({ scores }: { scores: { run_date: string; top_dec
         <XAxis dataKey="run_date" tickFormatter={(d: string) => fmtDate(d).slice(0, 6)} tick={AXIS} axisLine={{ stroke: "var(--axis)" }} tickLine={false} />
         <YAxis domain={[0, 1]} tickFormatter={pct0} tick={AXIS} axisLine={false} tickLine={false} />
         <ReferenceLine y={0.5} stroke="var(--axis)" strokeDasharray="4 4" />
-        <Tooltip contentStyle={TIP} cursor={{ fill: "var(--card2)" }} labelFormatter={(d) => `Predicted on ${fmtDate(String(d))}`}
+        <Tooltip {...TIP_PROPS} cursor={{ fill: "var(--card2)" }} labelFormatter={(d) => `Predicted on ${fmtDate(String(d))}`}
                  formatter={(v: number, n: string) => [n === "top_decile_hit" ? pct0(v) : fmtPct(v), n === "top_decile_hit" ? "Top-odds beat market" : "Their extra return"]} />
         <Bar dataKey="top_decile_hit" fill="var(--series-1)" radius={[4, 4, 0, 0]} isAnimationActive={false} />
       </ComposedChart>
@@ -262,7 +270,7 @@ export function PriceChart({ history, color = "var(--series-1)" }: { history: { 
         <CartesianGrid vertical={false} stroke="var(--grid)" />
         <XAxis dataKey="date" tickFormatter={(d: string) => fmtDate(d).slice(0, 6)} tick={AXIS} axisLine={{ stroke: "var(--axis)" }} tickLine={false} minTickGap={36} />
         <YAxis domain={["auto", "auto"]} tick={AXIS} axisLine={false} tickLine={false} tickFormatter={(v: number) => `₹${v >= 1000 ? (v / 1000).toFixed(1) + "k" : v.toFixed(0)}`} />
-        <Tooltip contentStyle={TIP} cursor={{ stroke: "var(--axis)", strokeDasharray: "3 3" }} labelFormatter={(d) => fmtDate(String(d))}
+        <Tooltip {...TIP_PROPS} cursor={{ stroke: "var(--axis)", strokeDasharray: "3 3" }} labelFormatter={(d) => fmtDate(String(d))}
                  formatter={(v: number, n: string) => [`₹${v.toFixed(2)}`, n === "close" ? "Close" : "20-day average"]} />
         <Legend formatter={(v: string) => <span style={{ color: "var(--text-2)", fontSize: 12 }}>{v === "close" ? "Closing price" : "20-day average"}</span>} />
         <Line dataKey="close" stroke={color} strokeWidth={2} dot={false} activeDot={{ r: 5, stroke: "var(--card)", strokeWidth: 2 }} isAnimationActive={false} />
@@ -284,7 +292,7 @@ export function TrackChart({ series, color = "var(--series-1)" }: { series: { da
         <XAxis dataKey="date" tickFormatter={(d: string) => fmtDate(d).slice(0, 6)} tick={AXIS} axisLine={{ stroke: "var(--axis)" }} tickLine={false} minTickGap={36} />
         <YAxis domain={[lo, hi]} tick={AXIS} axisLine={false} tickLine={false} />
         <ReferenceLine y={100} stroke="var(--axis)" strokeDasharray="4 4" label={{ value: "start", position: "insideTopRight", fontSize: 10, fill: "var(--text-muted)" }} />
-        <Tooltip contentStyle={TIP} cursor={{ stroke: "var(--axis)", strokeDasharray: "3 3" }} labelFormatter={(d) => fmtDate(String(d))}
+        <Tooltip {...TIP_PROPS} cursor={{ stroke: "var(--axis)", strokeDasharray: "3 3" }} labelFormatter={(d) => fmtDate(String(d))}
                  formatter={(v: number, n: string) => [`${(v - 100) >= 0 ? "+" : ""}${(v - 100).toFixed(2)}%`, n === "stock" ? "This stock" : "Median stock"]} />
         <Legend formatter={(v: string) => <span style={{ color: "var(--text-2)", fontSize: 12 }}>{v === "stock" ? "This stock" : "Median predicted stock (the market)"}</span>} />
         <Line dataKey="stock" stroke={color} strokeWidth={2.5} dot={false} activeDot={{ r: 5, stroke: "var(--card)", strokeWidth: 2 }} isAnimationActive={false} />
@@ -307,7 +315,7 @@ export function AllocationDonut({ holdings, color, cash }: { holdings: { ticker:
             <Pie data={data} dataKey="value" innerRadius={46} outerRadius={70} paddingAngle={2} stroke="var(--card)" strokeWidth={2} isAnimationActive={false}>
               {data.map((d) => <Cell key={d.name} fill={d.name === "Cash" ? "var(--text-dim)" : color} fillOpacity={d.opacity} />)}
             </Pie>
-            <Tooltip contentStyle={TIP} formatter={(v: number, n: string) => [`${v.toFixed(0)}%`, n]} />
+            <Tooltip {...TIP_PROPS} formatter={(v: number, n: string) => [`${v.toFixed(0)}%`, n]} />
           </PieChart>
         </ResponsiveContainer>
       </div>
@@ -333,7 +341,7 @@ export function LeaderBars({ rows }: { rows: { name: string; value: number; colo
         <XAxis type="number" tickFormatter={(v: number) => `${v}%`} tick={AXIS} axisLine={false} tickLine={false} />
         <YAxis type="category" dataKey="name" width={120} tick={{ ...AXIS, fill: "var(--text-2)" }} axisLine={false} tickLine={false} />
         <ReferenceLine x={0} stroke="var(--axis)" />
-        <Tooltip contentStyle={TIP} cursor={{ fill: "var(--card2)" }} formatter={(v: number) => [fmtPct(v, 2), "Average return"]} />
+        <Tooltip {...TIP_PROPS} cursor={{ fill: "var(--card2)" }} formatter={(v: number) => [fmtPct(v, 2), "Average return"]} />
         <Bar dataKey="value" radius={[0, 4, 4, 0]} isAnimationActive={false} label={{ position: "right", fontSize: 11, fill: "var(--text-2)", formatter: (v: number) => fmtPct(v, 2) }}>
           {rows.map((r) => <Cell key={r.name} fill={r.color} />)}
         </Bar>

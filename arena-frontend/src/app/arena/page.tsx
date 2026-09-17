@@ -231,7 +231,8 @@ function RaceView({ hist }: { hist: HistoryMap }) {
             <CartesianGrid stroke="var(--grid)" vertical={false} />
             <XAxis dataKey="date" tickFormatter={(d: string) => fmtDate(d).slice(0, 6)} tick={{ fontSize: 11, fill: "var(--text-muted)" }} axisLine={{ stroke: "var(--axis)" }} tickLine={false} minTickGap={30} />
             <YAxis tickFormatter={(v: number) => `${v}%`} tick={{ fontSize: 11, fill: "var(--text-muted)" }} axisLine={false} tickLine={false} />
-            <Tooltip contentStyle={{ borderRadius: 12, border: "1px solid var(--border)", background: "var(--card)", boxShadow: "var(--shadow-lg)", fontSize: 12 }}
+            <Tooltip contentStyle={{ borderRadius: 12, border: "1px solid var(--border)", background: "var(--card)", boxShadow: "var(--shadow-lg)", fontSize: 12, color: "var(--text)" }}
+                     itemStyle={{ color: "var(--text)", fontWeight: 600 }} labelStyle={{ color: "var(--text-muted)", marginBottom: 4 }}
                      formatter={(v: number, name: string) => [fmtPct(v, 2), modelMeta(name).label]} labelFormatter={(d) => fmtDate(String(d))} />
             <Legend formatter={(name: string) => <span style={{ color: "var(--text-2)", fontSize: 12 }}>{modelMeta(name).label}</span>} />
             {models.map((m) => <Line key={m} type="monotone" dataKey={m} stroke={modelMeta(m).color} strokeWidth={2} dot={false} activeDot={{ r: 5, stroke: "var(--card)", strokeWidth: 2 }} connectNulls isAnimationActive={false} />)}
