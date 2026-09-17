@@ -14,7 +14,7 @@ class Settings(BaseSettings):
 
     # ── LLM gateway (OpenAI-compatible) ────────────────────────────────
     AICREDITS_API_KEY: str = ""
-    AICREDITS_BASE_URL: str = "https://api.aicredits.in/v1"
+    AICREDITS_BASE_URL: str = "https://aicredits.in/v1"   # the api. subdomain stopped resolving in Sept 2026
     LLM_MODEL: str = "gpt-4o-mini"              # default content model
     LLM_STRUCTURED_METHOD: str = "json_schema"  # json_schema | function_calling | json_mode
     LLM_TEMPERATURE: float = 0.3

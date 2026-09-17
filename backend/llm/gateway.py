@@ -13,10 +13,15 @@ invocation passes a run_name and tags so traces group by feature.
 from __future__ import annotations
 
 import os
+import warnings
 from typing import Any, Type
 
 import httpx
 from langchain_openai import ChatOpenAI
+
+# langchain-openai serialises structured-output responses with a `parsed` field pydantic
+# did not expect; harmless, but it prints a warning per call.
+warnings.filterwarnings("ignore", message="Pydantic serializer warnings", category=UserWarning)
 from pydantic import BaseModel
 
 from config import settings
