@@ -31,7 +31,7 @@ def _short(t: str) -> str:
 
 @tool
 def get_rank_detail(symbol: str) -> dict:
-    """Latest Buy Rank for one NSE stock: score 1–100, band, sector, price, the factor values
+    """Latest Strength Score (buy_rank) for one NSE stock: score 1–100, band, sector, price, the factor values
     behind it (in plain units) and each factor's contribution. Use for any question about
     why a specific stock ranks where it does."""
     from llm.explain import _fmt_raw
@@ -53,7 +53,7 @@ def get_rank_detail(symbol: str) -> dict:
 
 @tool
 def list_ranks(sector: Optional[str] = None, band: Optional[str] = None, limit: int = 10, lowest: bool = False) -> dict:
-    """Top (or lowest) Buy Rank stocks today, optionally filtered by sector or band
+    """Top (or lowest) Strength Score stocks today, optionally filtered by sector or band
     (Strong/Good/Neutral/Weak). Use for 'which stocks look strongest in X', 'best ranked', etc."""
     limit = max(1, min(int(limit), 40))
     with SessionLocal() as db:

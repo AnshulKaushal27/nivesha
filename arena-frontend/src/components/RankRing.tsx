@@ -4,7 +4,7 @@ import type { Band } from "@/lib/api";
 import { BAND } from "@/lib/signals";
 
 /**
- * The Buy Rank ring: a 1–100 percentile drawn as an arc, coloured by band,
+ * The Strength Score ring: a 1–100 percentile drawn as an arc, coloured by band,
  * with the band word always visible so colour never carries meaning alone.
  */
 export function RankRing({ rank, band, size = 96, stroke = 9, showWord = true }: {
@@ -18,7 +18,7 @@ export function RankRing({ rank, band, size = 96, stroke = 9, showWord = true }:
   const text = decimal ? rank.toFixed(1) : String(rank);
   const fontSize = Math.round(size * (decimal ? 0.24 : 0.3));
   return (
-    <div role="img" aria-label={`Buy Rank ${text} out of 100, ${s.word}`}
+    <div role="img" aria-label={`Strength Score ${text} out of 100, ${s.word}`}
          style={{ position: "relative", width: size, height: size, flex: "0 0 auto" }}>
       <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} style={{ transform: "rotate(-90deg)" }}>
         <circle cx={size / 2} cy={size / 2} r={r} fill="none" stroke={s.soft} strokeWidth={stroke} />

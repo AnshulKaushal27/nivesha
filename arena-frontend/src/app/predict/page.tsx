@@ -60,8 +60,8 @@ export default function PredictPage() {
   return (
     <div style={{ display: "grid", gap: 22 }}>
       <PageHeader
-        eyebrow={`Predictions · ${run ? `${run.history_years} years of history` : "beat-the-market model"}`}
-        title="What kind of stock tends to rise next?"
+        eyebrow={`3-Month Odds · ${run ? `learned from ${run.history_years} years of history` : "beat-the-market model"}`}
+        title="Which stocks have the best odds of beating the market?"
         blurb={<>
           A model trained on {run ? `${run.history_years} years` : "up to 20 years"} of NIFTY 500 history estimates each stock&apos;s odds of
           beating the market over the next 3 months. It is tested on years it never saw. Odds are not promises.
@@ -100,7 +100,7 @@ export default function PredictPage() {
           ]} />
 
           {tab === "odds" && (
-            <Section title="Stocks with the best odds of beating the market" sub={`Next ${run.horizon_days} trading days · odds from the model · Buy Rank shown for comparison`}
+            <Section title="Stocks with the best odds of beating the market" sub={`Next ${run.horizon_days} trading days · odds from the model · Strength Score shown for comparison`}
               action={
                 <select value={sector} onChange={(e) => setSector(e.target.value)} aria-label="Sector" style={{ padding: "8px 12px", borderRadius: 999, border: "1px solid var(--border)", background: "var(--card)" }}>
                   <option value="">All sectors</option>{sectors.map((s) => <option key={s}>{s}</option>)}
@@ -113,7 +113,7 @@ export default function PredictPage() {
               <div style={{ overflowX: "auto" }}>
                 <table style={{ width: "100%", borderCollapse: "collapse", minWidth: 720 }}>
                   <thead><tr style={{ background: "var(--card2)" }}>
-                    {["#", "Stock", "Sector", "Odds of beating market", "Buy Rank", "Price"].map((h, i) => (
+                    {["#", "Stock", "Sector", "Odds of beating market", "Strength Score", "Price"].map((h, i) => (
                       <th key={h} className="eyebrow" style={{ textAlign: i >= 3 ? "right" : "left", padding: "12px 14px", whiteSpace: "nowrap" }}>{h}</th>
                     ))}
                   </tr></thead>
@@ -188,7 +188,7 @@ export default function PredictPage() {
           )}
 
           {tab === "history" && (
-            <Section title={`What happened after each Buy Rank band, ${run.history_start.slice(0, 4)}–${run.as_of.slice(0, 4)}`} sub="Every stock-day in the sample, grouped by the band it was in at the time">
+            <Section title={`What happened after each Strength Score band, ${run.history_start.slice(0, 4)}–${run.as_of.slice(0, 4)}`} sub="Every stock-day in the sample, grouped by the band it was in at the time">
               <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(300px, 1fr))", gap: 14 }}>
                 {[21, 63, 126].map((h) => (
                   <div key={h} className="card" style={{ padding: 16, background: "var(--card2)", borderColor: "transparent" }}>
@@ -224,7 +224,7 @@ export default function PredictPage() {
                   <dl style={{ display: "grid", gridTemplateColumns: "auto 1fr", gap: "8px 14px", fontSize: 13 }}>
                     <dt style={{ color: "var(--text-muted)" }}>Algorithm</dt><dd><b>{live?.model_card.algorithm ?? "HistGradientBoostingClassifier (scikit-learn)"}</b></dd>
                     <dt style={{ color: "var(--text-muted)" }}>Predicts</dt><dd>{live?.model_card.target ?? `whether a stock beats the market median over ${run.horizon_days} trading days`}</dd>
-                    <dt style={{ color: "var(--text-muted)" }}>Learns from</dt><dd>7 Buy Rank factors, the sector, and two market-state readings (median momentum, breadth)</dd>
+                    <dt style={{ color: "var(--text-muted)" }}>Learns from</dt><dd>7 Strength Score factors, the sector, and two market-state readings (median momentum, breadth)</dd>
                     <dt style={{ color: "var(--text-muted)" }}>Trained on</dt><dd>{run.history_years} years · {run.n_train_rows.toLocaleString("en-IN")} weekly samples · {run.n_tickers} stocks</dd>
                     <dt style={{ color: "var(--text-muted)" }}>Tested by</dt><dd>{live?.model_card.validation ?? "walk-forward by calendar year"}</dd>
                     <dt style={{ color: "var(--text-muted)" }}>Keeps current</dt><dd>{live?.model_card.retrain_policy ?? "retrains automatically when its last training is more than 7 days old"}</dd>

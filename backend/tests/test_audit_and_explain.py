@@ -30,7 +30,7 @@ def _fake_score():
 
 def test_build_table_allows_its_own_numbers():
     table, allowed = build_table(_fake_score())
-    assert "Buy Rank: 78/100" in table
+    assert "Strength Score: 78/100" in table
     assert offending_numbers(table, allowed) == []
 
 

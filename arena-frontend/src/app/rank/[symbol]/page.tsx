@@ -22,8 +22,8 @@ export default function StockRankPage({ params }: { params: { symbol: string } }
   }, [symbol]);
 
   useScreen(d ? {
-    page: "stock", route: `/rank/${symbol}`, title: `${d.symbol} — Buy Rank ${(d.score ?? d.buy_rank).toFixed(1)} (${d.band})`, asOf: d.date,
-    summary: `Stock page for ${d.symbol} (${d.sector}). Buy Rank ${(d.score ?? d.buy_rank).toFixed(1)}/100 (position #${d.position} of ${d.universe}), band ${d.band}, price ₹${d.close}, as of ${d.date}.` +
+    page: "stock", route: `/rank/${symbol}`, title: `${d.symbol} — Strength Score ${(d.score ?? d.buy_rank).toFixed(1)} (${d.band})`, asOf: d.date,
+    summary: `Stock page for ${d.symbol} (${d.sector}). Strength Score ${(d.score ?? d.buy_rank).toFixed(1)}/100 (position #${d.position} of ${d.universe}), band ${d.band}, price ₹${d.close}, as of ${d.date}.` +
       (ex ? ` AI explanation shown: ${ex.bullets.join(" ")} Watch out: ${ex.watch_out}` : " AI explanation not requested yet."),
     data: {
       buy_rank: d.buy_rank, band: d.band, sector: d.sector, price: d.close, eligible: d.eligible,
@@ -123,7 +123,7 @@ export default function StockRankPage({ params }: { params: { symbol: string } }
             <div style={{ fontSize: 12.5, color: "var(--text-muted)", marginBottom: 8 }}>Closing price with its 20-day average. A price above the average means the recent trend is up.</div>
             <PriceChart history={d.history} color={s.fill} />
             <h2 style={{ fontFamily: "var(--font-display)", fontWeight: 800, fontSize: 18, marginTop: 18, marginBottom: 4 }}>Rank over time</h2>
-            <div style={{ fontSize: 12.5, color: "var(--text-muted)", marginBottom: 8 }}>Buy Rank, 1–100, same period</div>
+            <div style={{ fontSize: 12.5, color: "var(--text-muted)", marginBottom: 8 }}>Strength Score, 1–100, same period</div>
             <RankSparkline data={d.history} color={s.fill} height={140} />
           </section>
           <section className="card fade-up-3" style={{ padding: 22 }}>

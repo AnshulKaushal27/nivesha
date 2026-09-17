@@ -61,8 +61,8 @@ export default function ArenaPage() {
   return (
     <div style={{ display: "grid", gap: 22 }}>
       <PageHeader
-        eyebrow="AI Arena · four AI managers, one market"
-        title="Which AI picks stocks best?"
+        eyebrow="AI Managers · four AIs, one market, paper money"
+        title="Which AI manager picks stocks best?"
         blurb="Every trading morning four AI models get the same TOPSIS shortlist and ₹1,00,000 of paper money. Each builds a portfolio in its own style. We track who is ahead."
         aside={sim?.date ? <>Latest round <b style={{ color: "var(--text)" }}>{fmtDate(sim.date)}</b></> : null}
       />

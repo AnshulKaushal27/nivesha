@@ -51,8 +51,8 @@ export default function RankPage() {
   const top = filtered.slice(0, 3);
 
   useScreen(loading ? null : {
-    page: "rank", route: "/", title: "Buy Rank — NIFTY 500", asOf: date,
-    summary: `Buy Rank list as of ${date}. ${items.length} stocks ranked; ${counts.Strong ?? 0} Strong, ${counts.Good ?? 0} Good, ${counts.Neutral ?? 0} Neutral, ${counts.Weak ?? 0} Weak.` +
+    page: "rank", route: "/", title: "Strength Score — NIFTY 500", asOf: date,
+    summary: `Strength Score list as of ${date}. ${items.length} stocks ranked; ${counts.Strong ?? 0} Strong, ${counts.Good ?? 0} Good, ${counts.Neutral ?? 0} Neutral, ${counts.Weak ?? 0} Weak.` +
       (sector || band || q ? ` Filters: ${[sector && `sector=${sector}`, band && `band=${band}`, q && `search="${q}"`].filter(Boolean).join(", ")}. ${filtered.length} match.` : ""),
     data: {
       visible_rows: filtered.slice(0, shown).map((i) => ({ position: i.position, symbol: i.symbol, score: i.score, rank_bucket: i.buy_rank, band: i.band, sector: i.sector, price: i.close,
@@ -67,9 +67,9 @@ export default function RankPage() {
   return (
     <div style={{ display: "grid", gap: 24 }}>
       <PageHeader
-        eyebrow="Buy Rank · NIFTY 500"
-        title="Which stocks look strongest today?"
-        blurb="Every stock gets a score from 1 to 100 based on trend, momentum, calmness and liquidity. Higher is stronger. It is a ranking, not advice."
+        eyebrow="Strength Rank · NIFTY 500 · updated nightly"
+        title="Which stocks are strongest today?"
+        blurb="Every NIFTY 500 stock gets a Strength Score from 1 to 100 based on its trend, momentum, calmness and liquidity. Higher is stronger. It describes today, it does not predict, and it is not advice."
         aside={loading ? <span className="skeleton" style={{ display: "inline-block", width: 140, height: 16 }} /> : <>As of <b style={{ color: "var(--text)" }}>{fmtDate(date)}</b> · {items.length} stocks ranked</>}
       />
 
@@ -102,12 +102,12 @@ export default function RankPage() {
           <Section title="How the market splits" sub="Share of ranked stocks in each band today">
             <BandDonut counts={counts} total={items.length} />
           </Section>
-          <Section title="Biggest moves this month" sub={compareDate ? `Change in Buy Rank since ${fmtDate(compareDate)}` : "Change in Buy Rank over 20 trading days"}>
+          <Section title="Biggest moves this month" sub={compareDate ? `Change in Strength Score since ${fmtDate(compareDate)}` : "Change in Strength Score over 20 trading days"}>
             {movers && (movers.risers.length || movers.fallers.length)
               ? <MoversChart risers={movers.risers} fallers={movers.fallers} />
               : <div style={{ color: "var(--text-muted)", fontSize: 13 }}>Needs a month of rank history.</div>}
           </Section>
-          <Section title="Strongest sectors" sub="Average Buy Rank, top sectors">
+          <Section title="Strongest sectors" sub="Average Strength Score, top sectors">
             <SectorBars rows={sectors.map((s) => ({ sector: s.sector, count: s.count, avg_rank: s.avg_rank }))} max={8} height={220} />
           </Section>
         </section>
@@ -153,7 +153,7 @@ export default function RankPage() {
       {/* Table */}
       <section className="card fade-up-4" style={{ overflow: "hidden" }}>
         <div style={{ padding: "12px 16px", fontSize: 12.5, color: "var(--text-2)", background: "var(--accent-soft)", lineHeight: 1.5 }}>
-          <b style={{ color: "var(--accent-ink)" }}>How to read the score.</b> Buy Rank is a percentile of the {universe || "~470"} stocks ranked today: <b>100.0 is the single strongest stock</b>, each step down is {universe ? (100 / universe).toFixed(1) : "0.2"} points, and 50.0 is the middle of the pack.
+          <b style={{ color: "var(--accent-ink)" }}>How to read the score.</b> Strength Score is a percentile of the {universe || "~470"} stocks ranked today: <b>100.0 is the single strongest stock</b>, each step down is {universe ? (100 / universe).toFixed(1) : "0.2"} points, and 50.0 is the middle of the pack.
           The bands (Strong, Good, Neutral, Weak) use the whole-number version. Ties are broken by the underlying factor score.
         </div>
         <div style={{ overflowX: "auto" }}>

@@ -41,5 +41,5 @@ export const SUGGESTIONS: Record<string, string[]> = {
   stock:   ["Why is this stock ranked here?", "What is the biggest weakness in its numbers?", "Any recent news on this company?"],
   predict: ["How much should I trust these odds?", "Which sector looks best right now and why?", "What type of stock is rising lately?"],
   arena:   ["Who is winning and why?", "Which manager is the most cautious?", "Explain the leader's strategy simply."],
-  unknown: ["What can you help me with?", "How does Buy Rank work?", "What is the AI Arena?"],
+  unknown: ["What can you help me with?", "How does the Strength Score work?", "What is the AI Managers tab?"],
 };

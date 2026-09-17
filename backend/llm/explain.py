@@ -94,7 +94,7 @@ def build_table(score: FactorScore) -> tuple[str, set[str]]:
     raw_h = _fmt_raw(score.raw or {})
     z, c = score.z or {}, score.contributions or {}
     lines = [
-        f"Stock: {score.ticker.replace('.NS', '')}   Date: {score.date}   Buy Rank: {score.buy_rank}/100   Band: {score.band}",
+        f"Stock: {score.ticker.replace('.NS', '')}   Date: {score.date}   Strength Score: {score.buy_rank}/100   Band: {score.band}",
         f"Price: {score.close:.2f}   Sector: {score.sector}",
         "",
         f"{'Factor':<52} {'Value':<48} {'Z':>6} {'Weight':>7} {'Contrib':>8}",
@@ -138,7 +138,7 @@ def template_explanation(score: FactorScore) -> dict:
 
 # ── Graph nodes ────────────────────────────────────────────────────────────
 
-SYSTEM = """You explain a stock's Buy Rank to a complete beginner.
+SYSTEM = """You explain a stock's Strength Score (a 1–100 percentile, formerly called Buy Rank) to a complete beginner.
 
 Rules, all mandatory:
 1. Use ONLY numbers that appear in the table. Never compute, convert, or invent a number.

@@ -6,9 +6,9 @@ import { useEffect, useState } from "react";
 import { ChatDock } from "@/components/ChatDock";
 
 const NAV = [
-  { href: "/",        label: "Buy Rank",    icon: "◎" },
-  { href: "/predict", label: "Predictions", icon: "◆" },
-  { href: "/arena",   label: "AI Arena",    icon: "⬡" },
+  { href: "/",        label: "Strength Rank", icon: "◎", hint: "Which stocks are strongest today, scored 1–100" },
+  { href: "/predict", label: "3-Month Odds",  icon: "◆", hint: "Each stock's chance of beating the market over the next 3 months" },
+  { href: "/arena",   label: "AI Managers",   icon: "⬡", hint: "Four AI managers compete with paper money" },
 ];
 
 export function AppShell({ children }: { children: React.ReactNode }) {
@@ -50,7 +50,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             {NAV.map((n) => {
               const active = n.href === "/" ? path === "/" || path?.startsWith("/rank") : path?.startsWith(n.href);
               return (
-                <Link key={n.href} href={n.href} aria-current={active ? "page" : undefined} style={{
+                <Link key={n.href} href={n.href} title={n.hint} aria-current={active ? "page" : undefined} style={{
                   padding: "8px 14px", borderRadius: 999, fontSize: 13.5, fontWeight: 700, whiteSpace: "nowrap",
                   color: active ? "var(--accent-ink)" : "var(--text-2)",
                   background: active ? "var(--card)" : "transparent",

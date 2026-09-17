@@ -3,7 +3,7 @@
 import { Area, AreaChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { fmtDate } from "@/lib/signals";
 
-/** Buy Rank over time. One series, so no legend; the title names it. */
+/** Strength Score over time. One series, so no legend; the title names it. */
 export function RankSparkline({ data, height = 160, color = "var(--accent)" }: {
   data: { date: string; buy_rank: number }[]; height?: number; color?: string;
 }) {
