@@ -20,30 +20,25 @@ export default function StatusPage() {
   useScreen(s ? {
     page: "status", route: "/status", title: "System status", asOf: s.checked_at,
     summary: `System status page. Overall ${s.overall}. ${s.alerts.length} open alerts: ${s.alerts.map((a) => `${a.kind} (${a.severity})`).join(", ") || "none"}. ` +
-      `Latest bars ${s.data.latest_bars}, scores ${s.data.latest_scores}, model trained ${s.data.model_trained}. LLM spend today $${s.llm.today.est_cost_usd}, 30 days $${s.llm.last_30_days.est_cost_usd}.` +
-      (s.llm.projection && !("error" in s.llm.projection) ? ` Credits: $${s.llm.projection.remaining_usd} left (${s.llm.projection.remaining_pct}%), runs out around ${s.llm.projection.runs_out_on}.` : " Credit balance not configured."),
-    data: { alerts: s.alerts, jobs: s.jobs, schedule: s.schedule, llm: { today: s.llm.today, last_30_days: s.llm.last_30_days, projection: s.llm.projection } },
+      `Latest bars ${s.data.latest_bars}, scores ${s.data.latest_scores}, model trained ${s.data.model_trained}. LLM spend today $${s.llm.today.est_cost_usd}, 30 days $${s.llm.last_30_days.est_cost_usd}.`,
+    data: { alerts: s.alerts, jobs: s.jobs, schedule: s.schedule, llm: { today: s.llm.today, last_30_days: s.llm.last_30_days, budget: s.llm.budget } },
   } : null, [s]);
 
-  async function act(kind: "checks" | "test") {
+  async function act(kind: "checks") {
     setBusy(kind); setNote(null);
-    try {
-      if (kind === "checks") { await api.runChecks(); setNote("All checks ran. Refreshed below."); }
-      else { const r = await api.testAlert(); setNote(r.notified ? "Test alert delivered to your channel(s)." : "Alert recorded, but no push channel is configured (Telegram / webhook)."); }
-      load();
-    } catch (e) { setNote((e as Error).message); } finally { setBusy(null); }
+    try { await api.runChecks(); setNote("All checks ran. Refreshed below."); load(); }
+    catch (e) { setNote((e as Error).message); } finally { setBusy(null); }
   }
 
   if (error) return <EmptyState icon="⚠" title="Could not load status" body={error} />;
   if (!s) return <div className="skeleton" style={{ height: 300 }} />;
 
-  const p = s.llm.projection && !("error" in s.llm.projection) ? s.llm.projection : null;
   const tone = s.overall === "ok" ? "strong" : s.overall === "warning" ? "neutral" : "weak";
 
   return (
     <div style={{ display: "grid", gap: 22 }}>
       <PageHeader eyebrow="System status · checked every minute" title={s.overall === "ok" ? "Everything is running" : s.overall === "warning" ? "Running, with warnings" : "Something needs you"}
-        blurb="Scheduled jobs, open alerts, data freshness, AI spend and the trading calendar. Alerts also go to Telegram or a webhook when configured."
+        blurb="Scheduled jobs, open alerts, data freshness, AI spend and the trading calendar."
         aside={<>{fmtDate(s.today.date)} · {s.today.trading_day ? "trading day" : `market closed${s.today.holiday ? ` (${s.today.holiday})` : ""}`} · next trading day {fmtDate(s.today.next_trading_day)}</>} />
 
       <section style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(170px, 1fr))", gap: 12 }}>
@@ -52,15 +47,11 @@ export default function StatusPage() {
         <StatTile label="Today's AI budget" value={s.llm.budget.budget_inr > 0 ? `₹${s.llm.budget.spent_inr.toFixed(2)} / ₹${s.llm.budget.budget_inr.toFixed(0)}` : `₹${s.llm.budget.spent_inr.toFixed(2)}`}
                   sub={s.llm.budget.budget_inr > 0 ? (s.llm.budget.exhausted ? "used up — optional AI paused until midnight" : `${s.llm.budget.pct_used}% used · ${s.llm.today.calls} calls · 30d $${s.llm.last_30_days.est_cost_usd.toFixed(2)}`) : "no daily cap set"}
                   tone={s.llm.budget.exhausted ? "weak" : (s.llm.budget.pct_used ?? 0) > 70 ? "neutral" : "accent"} />
-        <StatTile label="Credits left" value={p ? `$${p.remaining_usd.toFixed(2)}` : "not set"} sub={p ? (p.runs_out_on ? `≈ ${p.days_left} days · out around ${fmtDate(p.runs_out_on)}` : "no spend yet") : "set LLM_CREDITS_USD in .env"}
-                  tone={p ? (p.remaining_pct < 20 ? "weak" : p.remaining_pct < 50 ? "neutral" : "strong") : undefined} />
-        <StatTile label="Push channels" value={s.channels.telegram || s.channels.webhook ? "on" : "off"} sub={[s.channels.telegram && "Telegram", s.channels.webhook && "webhook"].filter(Boolean).join(" · ") || "log + this page only"} />
       </section>
 
       <section className="glass" style={{ display: "flex", flexWrap: "wrap", gap: 10, alignItems: "center", padding: "10px 14px", borderRadius: 16 }}>
         <span className="eyebrow">Actions</span>
         <Button onClick={() => act("checks")} disabled={busy !== null}>{busy === "checks" ? "Running…" : "Run all checks now"}</Button>
-        <Button onClick={() => act("test")} disabled={busy !== null} variant="ghost">{busy === "test" ? "Sending…" : "Send a test alert"}</Button>
         {note && <span style={{ fontSize: 12.5, color: "var(--text-muted)" }}>{note}</span>}
       </section>
 
@@ -129,13 +120,6 @@ export default function StatusPage() {
               {s.llm.by_model_30d.map((m) => <Row key={m.model} k={m.model.replace("openai/", "")} v={`$${m.est_cost_usd.toFixed(3)} · ${m.calls}`} />)}
             </div>
           </div>
-          {p && (
-            <div style={{ marginTop: 14, padding: 12, borderRadius: 12, background: p.remaining_pct < 20 ? "var(--weak-soft)" : "var(--card2)", fontSize: 13, lineHeight: 1.55 }}>
-              Balance <b>${p.balance_usd.toFixed(2)}</b> on {fmtDate(p.as_of)} · spent since ≈ <b>${p.spent_since_usd.toFixed(3)}</b> · burning ≈ <b>${p.burn_per_day_usd.toFixed(3)}/day</b>
-              {p.runs_out_on && <> · runs out around <b>{fmtDate(p.runs_out_on)}</b></>}. You get a warning at {`<`}20% or {`<`}14 days, and a critical alert the moment the gateway refuses a call for credits.
-            </div>
-          )}
-          {!p && <div style={{ marginTop: 14, fontSize: 12.5, color: "var(--text-muted)" }}>Add <code>LLM_CREDITS_USD</code> and <code>LLM_CREDITS_AS_OF</code> to <code>backend/.env</code> to see a run-out date here.</div>}
         </Section>
 
         <Section title="Trading calendar" sub={`${s.calendar.total} holidays known for ${s.calendar.years_covered.join(", ")} · sources: ${Object.entries(s.calendar.by_source).map(([k, v]) => `${k} ${v}`).join(", ") || "static"}`}>

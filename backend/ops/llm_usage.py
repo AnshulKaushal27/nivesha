@@ -195,18 +195,23 @@ def summary(db: Session) -> dict:
         .group_by(LlmUsage.date).order_by(LlmUsage.date)).all()]
 
     projection = None
-    if settings.LLM_CREDITS_USD > 0 and settings.LLM_CREDITS_AS_OF:
+    balance_usd = settings.LLM_CREDITS_INR / settings.USD_INR if settings.LLM_CREDITS_INR > 0 else settings.LLM_CREDITS_USD
+    if balance_usd > 0 and settings.LLM_CREDITS_AS_OF:
         try:
             as_of = date.fromisoformat(settings.LLM_CREDITS_AS_OF)
-            spent = db.execute(select(func.coalesce(func.sum(LlmUsage.est_cost_usd), 0.0)).where(LlmUsage.date >= as_of)).scalar()
-            remaining = settings.LLM_CREDITS_USD - float(spent)
+            spent = float(db.execute(select(func.coalesce(func.sum(LlmUsage.est_cost_usd), 0.0)).where(LlmUsage.date >= as_of)).scalar())
+            remaining = balance_usd - spent
             days_left = (remaining / burn_per_day) if burn_per_day > 0 else None
+            fx = settings.USD_INR
             projection = {
-                "balance_usd": settings.LLM_CREDITS_USD, "as_of": str(as_of), "spent_since_usd": round(float(spent), 4),
-                "remaining_usd": round(remaining, 4), "remaining_pct": round(100 * remaining / settings.LLM_CREDITS_USD, 1),
-                "burn_per_day_usd": round(burn_per_day, 4),
+                "currency": "INR" if settings.LLM_CREDITS_INR > 0 else "USD",
+                "balance_usd": round(balance_usd, 4), "balance_inr": round(balance_usd * fx, 2), "as_of": str(as_of),
+                "spent_since_usd": round(spent, 4), "spent_since_inr": round(spent * fx, 3),
+                "remaining_usd": round(remaining, 4), "remaining_inr": round(remaining * fx, 2),
+                "remaining_pct": round(100 * remaining / balance_usd, 1),
+                "burn_per_day_usd": round(burn_per_day, 4), "burn_per_day_inr": round(burn_per_day * fx, 3),
                 "days_left": None if days_left is None else round(days_left, 1),
-                "runs_out_on": None if days_left is None else str(today + timedelta(days=int(days_left))),
+                "runs_out_on": None if days_left is None else str(today + timedelta(days=min(int(days_left), 36500))),
             }
         except ValueError:
             projection = {"error": "LLM_CREDITS_AS_OF must be an ISO date like 2026-09-17"}
@@ -225,12 +230,17 @@ def check_credit_projection(db: Session) -> dict | None:
     if not p or "error" in p:
         return None
     low = p["remaining_pct"] < settings.ALERT_CREDITS_LOW_PCT or (p["days_left"] is not None and p["days_left"] < settings.ALERT_CREDITS_LOW_DAYS)
+    inr = p.get("currency") == "INR"
+    bal = f"₹{p['balance_inr']:.2f}" if inr else f"${p['balance_usd']:.2f}"
+    rem = f"₹{p['remaining_inr']:.2f}" if inr else f"${p['remaining_usd']:.2f}"
+    spent = f"₹{p['spent_since_inr']:.2f}" if inr else f"${p['spent_since_usd']:.2f}"
+    burn = f"₹{p['burn_per_day_inr']:.3f}" if inr else f"${p['burn_per_day_usd']:.3f}"
     if p["remaining_usd"] <= 0:
-        raise_alert("credits_exhausted", f"Estimated LLM credits are used up (balance ${p['balance_usd']:.2f} on {p['as_of']}, "
-                    f"≈${p['spent_since_usd']:.2f} spent since). Top up and update LLM_CREDITS_USD / LLM_CREDITS_AS_OF.", "critical", db=db)
+        raise_alert("credits_exhausted", f"Estimated LLM credits are used up (balance {bal} on {p['as_of']}, ≈{spent} spent since). "
+                    f"Top up and update LLM_CREDITS_INR / LLM_CREDITS_AS_OF.", "critical", db=db)
     elif low:
-        raise_alert("credits_low", f"≈${p['remaining_usd']:.2f} of ${p['balance_usd']:.2f} left ({p['remaining_pct']}%); at ≈${p['burn_per_day_usd']:.3f}/day "
-                    f"that is about {p['days_left']} days — runs out around {p['runs_out_on']}.", "warning", db=db)
+        raise_alert("credits_low", f"≈{rem} of {bal} left ({p['remaining_pct']}%); at ≈{burn}/day that is about {p['days_left']} days — "
+                    f"runs out around {p['runs_out_on']}.", "warning", db=db)
     else:
         resolve("credits_low", db=db)
     return p

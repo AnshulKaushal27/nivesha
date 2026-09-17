@@ -136,7 +136,7 @@ export interface SystemStatus {
     by_feature_30d: { feature: string; calls: number; est_cost_usd: number }[];
     by_model_30d: { model: string; calls: number; est_cost_usd: number }[];
     daily_30d: { date: string; est_cost_usd: number; calls: number }[];
-    projection: { balance_usd: number; as_of: string; spent_since_usd: number; remaining_usd: number; remaining_pct: number; burn_per_day_usd: number; days_left: number | null; runs_out_on: string | null } | { error: string } | null;
+    projection: { currency: "INR" | "USD"; balance_usd: number; balance_inr: number; as_of: string; spent_since_usd: number; spent_since_inr: number; remaining_usd: number; remaining_inr: number; remaining_pct: number; burn_per_day_usd: number; burn_per_day_inr: number; days_left: number | null; runs_out_on: string | null } | { error: string } | null;
     note: string;
   };
   calendar: { years_covered: number[]; total: number; by_source: Record<string, number>; next: { date: string; name: string }[] };
