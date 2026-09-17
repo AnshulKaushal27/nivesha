@@ -4,10 +4,10 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+from config import settings
 from database import Base, engine
-from routes import leaderboard, portfolios, market, admin
+from routes import leaderboard, portfolios, market, admin, rank
 from scheduler import setup_scheduler
-from database import Portfolio, DailyValuation
 
 # ── Logging ────────────────────────────────────────────────────────────────
 logging.basicConfig(
@@ -17,8 +17,10 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-# Ensure all tables exist
-Base.metadata.create_all(bind=engine)
+# Schema is owned by Alembic (`alembic upgrade head`). For the zero-setup
+# SQLite path we still create tables so `uvicorn main:app` just works.
+if settings.DATABASE_URL.startswith("sqlite"):
+    Base.metadata.create_all(bind=engine)
 
 
 # ── Lifespan ───────────────────────────────────────────────────────────────
@@ -53,6 +55,7 @@ app.include_router(leaderboard.router)
 app.include_router(portfolios.router)
 app.include_router(market.router)
 app.include_router(admin.router)
+app.include_router(rank.router)
 
 
 @app.get("/health")

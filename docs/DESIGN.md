@@ -449,7 +449,39 @@ over-confident personas are shrunk toward 0.5 before weighting.
   that live following is unavailable until the consensus account has a
   60-session track record. Danger Zone Red is never orderable.
 
-### 2.7 Frontend: the Boardroom
+### 2.7 Orchestration: LangGraph everywhere, LangSmith for monitoring
+
+Every LLM feature is a **LangGraph `StateGraph`**, and every model call goes
+through `backend/llm/gateway.py` (LangChain `ChatOpenAI` against the gateway,
+`with_structured_output` for schemas). No feature imports a provider SDK.
+This is a deliberate choice for three reasons:
+
+1. **The chatbot is coming.** A LangGraph agent with tools over the internal
+   services (`get_rank`, `get_weather`, `get_arena_consensus`, `search_news`)
+   and a Postgres checkpointer for conversation threads slots in as one more
+   graph, sharing the gateway, the audit and the tracing.
+2. **Grounding loops are graphs.** "Generate → audit numbers → repair or
+   strip" is a conditional edge, not an if-statement buried in a service.
+3. **Monitoring is free.** With `LANGSMITH_TRACING=true`, every graph run is a
+   trace with the packet id, persona, model and cost attached. That is the
+   monitoring layer for the product and for the chatbot.
+
+Graph inventory:
+
+| Graph | Nodes | Shipped in |
+| --- | --- | --- |
+| `buyrank.explain` | generate → audit → {end, retry, strip} | Phase 0 |
+| `intel.extract` | search → dedupe → extract (structured) → score decay → persist | Phase 1 |
+| `danger.spike_check` | search news → classify has_specific_news | Phase 1 |
+| `arena.cycle` | build_packet → fan-out round 1 (`Send` per persona) → collect → fan-out round 2 → risk_officer → ensemble (pure code) → construct_portfolio → persist | Phase 2 |
+| `chat.assistant` | tool-calling agent with checkpointer; tools read from the API layer only | later |
+
+Conventions: state is a `TypedDict`; every node is a pure function of state;
+anything that must be enforced (position caps, bans, number audit) is a code
+node, never a prompt instruction; `graph.invoke(..., config=run_config(...))`
+tags the trace with `ai-arena` plus the feature name.
+
+### 2.8 Frontend: the Boardroom
 
 - **Boardroom view** for any stock: five avatars in a row, each with a
   stance chip (Buy / Hold / Avoid), a conviction bar, and its thesis on tap.

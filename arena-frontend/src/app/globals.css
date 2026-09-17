@@ -1,82 +1,142 @@
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
+/* ──────────────────────────────────────────────────────────────────────
+   Design tokens — pastel surfaces, saturated signals.
+   Rule: colour carries meaning only when paired with a word or icon.
+   Signal hues were validated with the dataviz palette checker (CVD + contrast).
+   ────────────────────────────────────────────────────────────────────── */
 :root {
-  --font-display: 'Syne', sans-serif;
-  --font-mono:    'DM Mono', monospace;
+  color-scheme: light;
+  --font-display: 'Manrope', system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --font-body:    'Manrope', system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --font-mono:    'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
 
-  /* Dark theme (default) */
-  --bg:         #07090d;
-  --surface:    #0c0f15;
-  --card:       #10141c;
-  --card2:      #141820;
-  --border:     rgba(255,255,255,0.07);
-  --border-hi:  rgba(255,255,255,0.13);
-  --text:       #e8edf3;
-  --text-muted: #5a6478;
-  --text-dim:   #3a4156;
-  --accent:     #00e5a0;
-  --accent2:    #0077ff;
-  --accent3:    #ff6b35;
-  --red:        #ff4d6a;
-  --green:      #00e5a0;
-  --gold:       #ffd166;
-  --glow:       rgba(0,229,160,0.12);
-}
-
-[data-theme="light"] {
-  --bg:         #f0f2f5;
-  --surface:    #ffffff;
+  /* Planes */
+  --bg:         #f6f4f0;          /* page plane — warm linen */
+  --surface:    #fbfaf8;          /* chart / panel surface */
   --card:       #ffffff;
-  --card2:      #f7f9fc;
-  --border:     rgba(0,0,0,0.08);
-  --border-hi:  rgba(0,0,0,0.15);
-  --text:       #0d1117;
-  --text-muted: #6b7894;
-  --text-dim:   #aab4c8;
-  --accent:     #00b87a;
-  --accent2:    #0055cc;
-  --accent3:    #d94f1a;
-  --red:        #e5002a;
-  --green:      #00a86b;
-  --gold:       #d4900a;
-  --glow:       rgba(0,184,122,0.08);
+  --card2:      #f3f1ec;
+  --border:     rgba(28, 25, 23, 0.08);
+  --border-hi:  rgba(28, 25, 23, 0.16);
+  --shadow:     0 1px 2px rgba(28,25,23,0.04), 0 8px 24px -12px rgba(28,25,23,0.12);
+  --shadow-lg:  0 2px 4px rgba(28,25,23,0.05), 0 20px 40px -20px rgba(28,25,23,0.18);
+  --radius:     16px;
+  --radius-sm:  10px;
+
+  /* Ink */
+  --text:       #1c1917;
+  --text-2:     #4a4642;
+  --text-muted: #7a746d;
+  --text-dim:   #b3ada5;
+
+  /* Brand accent (soft violet) */
+  --accent:     #7c6bd6;
+  --accent-ink: #4b3fa3;
+  --accent-soft:#e9e5fa;
+  --accent2:    #3b82d6;
+  --accent3:    #e77a55;
+  --glow:       rgba(124,107,214,0.14);
+
+  /* Signal: Buy Rank bands — pastel fill + deeper ink, always with a word */
+  --strong:      #2f9e6a;  --strong-soft:  #d7f1e3;  --strong-ink:  #1b6b46;
+  --good:        #3b82d6;  --good-soft:    #dbe8fa;  --good-ink:    #245aa0;
+  --neutral:     #d99a1b;  --neutral-soft: #fbedc9;  --neutral-ink: #8a5f06;
+  --weak:        #d9534f;  --weak-soft:    #fadcdb;  --weak-ink:    #a03330;
+  --wait:        #7c6bd6;  --wait-soft:    #e9e5fa;  --wait-ink:    #4b3fa3;
+
+  /* Status (danger zone, later) */
+  --ok:          #2f9e6a;  --ok-soft:      #d7f1e3;
+  --warn:        #d99a1b;  --warn-soft:    #fbedc9;
+  --crit:        #d9534f;  --crit-soft:    #fadcdb;
+
+  /* Legacy aliases used by /legacy */
+  --red:   var(--weak);
+  --green: var(--strong);
+  --gold:  var(--neutral);
+
+  /* Categorical series (AI personas / models) — fixed order, never cycled */
+  --series-1: #4f86e0; --series-2: #e77a55; --series-3: #2fa885; --series-4: #d9a021;
+  --series-5: #d977a6; --series-6: #4fa04a; --series-7: #8577dd; --series-8: #de5f5c;
+
+  /* Chart chrome */
+  --grid: #e8e5df;
+  --axis: #c9c4bc;
 }
 
-html { font-size: 15px; }
+[data-theme="dark"] {
+  color-scheme: dark;
+  --bg:         #16151a;
+  --surface:    #1c1b21;
+  --card:       #212027;
+  --card2:      #2a2831;
+  --border:     rgba(255,255,255,0.08);
+  --border-hi:  rgba(255,255,255,0.16);
+  --shadow:     0 1px 2px rgba(0,0,0,0.3), 0 8px 24px -12px rgba(0,0,0,0.5);
+  --shadow-lg:  0 2px 4px rgba(0,0,0,0.3), 0 20px 40px -20px rgba(0,0,0,0.6);
+  --text:       #f2efe9;
+  --text-2:     #cdc8c0;
+  --text-muted: #948e86;
+  --text-dim:   #5c5851;
+  --accent:     #a394f0;  --accent-ink: #c9bff7;  --accent-soft: rgba(124,107,214,0.22);
+  --strong:  #4fc08a;  --strong-soft:  rgba(47,158,106,0.22);  --strong-ink:  #8fe0b8;
+  --good:    #6aa6ee;  --good-soft:    rgba(59,130,214,0.22);  --good-ink:    #a8cbf7;
+  --neutral: #e8b44a;  --neutral-soft: rgba(217,154,27,0.22);  --neutral-ink: #f3d38a;
+  --weak:    #ec7772;  --weak-soft:    rgba(217,83,79,0.22);   --weak-ink:    #f5aaa7;
+  --wait:    #a394f0;  --wait-soft:    rgba(124,107,214,0.22); --wait-ink:    #c9bff7;
+  --ok:   #4fc08a;  --ok-soft:   rgba(47,158,106,0.22);
+  --warn: #e8b44a;  --warn-soft: rgba(217,154,27,0.22);
+  --crit: #ec7772;  --crit-soft: rgba(217,83,79,0.22);
+  --grid: #2c2a32; --axis: #3d3a44;
+}
+
+html { font-size: 15px; scroll-behavior: smooth; }
 
 body {
-  font-family: var(--font-mono);
+  font-family: var(--font-body);
   background: var(--bg);
   color: var(--text);
   min-height: 100vh;
-  transition: background 0.3s ease, color 0.3s ease;
   -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+  transition: background 0.3s ease, color 0.3s ease;
+}
+
+a { color: inherit; text-decoration: none; }
+button { font: inherit; color: inherit; background: none; border: 0; cursor: pointer; }
+input, select { font: inherit; color: inherit; }
+.tnum { font-variant-numeric: tabular-nums; }
+
+/* Reusable primitives */
+.card {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+}
+.chip {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 4px 10px; border-radius: 999px;
+  font-size: 12px; font-weight: 700; letter-spacing: 0.01em; line-height: 1.2;
+}
+.chip-dot { width: 8px; height: 8px; border-radius: 50%; }
+.eyebrow {
+  font-size: 11px; font-weight: 800; letter-spacing: 0.12em; text-transform: uppercase;
+  color: var(--text-muted);
 }
 
 /* Scrollbar */
-::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar { width: 8px; height: 8px; }
 ::-webkit-scrollbar-track { background: transparent; }
-::-webkit-scrollbar-thumb { background: var(--border-hi); border-radius: 3px; }
-::-webkit-scrollbar-thumb:hover { background: var(--text-dim); }
+::-webkit-scrollbar-thumb { background: var(--border-hi); border-radius: 4px; }
 
 /* Animations */
-@keyframes fadeUp {
-  from { opacity: 0; transform: translateY(16px); }
-  to   { opacity: 1; transform: translateY(0); }
-}
-@keyframes pulse-dot {
-  0%, 100% { opacity: 1; transform: scale(1); }
-  50%       { opacity: 0.4; transform: scale(0.7); }
-}
-@keyframes shimmer {
-  0%   { background-position: -400px 0; }
-  100% { background-position: 400px 0; }
-}
-@keyframes spin {
-  to { transform: rotate(360deg); }
-}
+@keyframes fadeUp { from { opacity: 0; transform: translateY(12px); } to { opacity: 1; transform: translateY(0); } }
+@keyframes pulse-dot { 0%, 100% { opacity: 1; transform: scale(1); } 50% { opacity: 0.4; transform: scale(0.7); } }
+@keyframes shimmer { 0% { background-position: -400px 0; } 100% { background-position: 400px 0; } }
+@keyframes spin { to { transform: rotate(360deg); } }
+@keyframes ringIn { from { stroke-dashoffset: var(--ring-full); } }
 
-.fade-up { animation: fadeUp 0.45s ease both; }
+.fade-up   { animation: fadeUp 0.45s ease both; }
 .fade-up-1 { animation: fadeUp 0.45s 0.05s ease both; }
 .fade-up-2 { animation: fadeUp 0.45s 0.10s ease both; }
 .fade-up-3 { animation: fadeUp 0.45s 0.15s ease both; }
@@ -84,13 +144,12 @@ body {
 .fade-up-5 { animation: fadeUp 0.45s 0.25s ease both; }
 
 .skeleton {
-  background: linear-gradient(
-    90deg,
-    var(--card) 25%,
-    var(--card2) 50%,
-    var(--card) 75%
-  );
+  background: linear-gradient(90deg, var(--card2) 25%, var(--card) 50%, var(--card2) 75%);
   background-size: 400px 100%;
   animation: shimmer 1.4s infinite;
-  border-radius: 4px;
+  border-radius: var(--radius-sm);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; }
 }

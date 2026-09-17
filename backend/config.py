@@ -1,14 +1,45 @@
-from pydantic_settings import BaseSettings
-from typing import List
+from typing import Dict, List
+
+from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class Settings(BaseSettings):
-    # ── API ────────────────────────────────────────────────────────────
-    AICREDITS_API_KEY: str
+    # `extra="ignore"` lets LANGSMITH_* and other tool-owned variables live in
+    # the same .env without pydantic rejecting them.
+    model_config = SettingsConfigDict(env_file=".env", extra="ignore")
+
+    # ── LLM gateway (OpenAI-compatible) ────────────────────────────────
+    AICREDITS_API_KEY: str = ""
     AICREDITS_BASE_URL: str = "https://api.aicredits.in/v1"
+    LLM_MODEL: str = "gpt-4o-mini"              # default content model
+    LLM_STRUCTURED_METHOD: str = "json_schema"  # json_schema | function_calling | json_mode
+    LLM_TEMPERATURE: float = 0.3
 
     # ── Database ───────────────────────────────────────────────────────
+    # SQLite for a zero-setup start; Postgres for real work:
+    #   postgresql+psycopg://arena:arena@localhost:5432/arena
     DATABASE_URL: str = "sqlite:///./arena.db"
+
+    # ── Universe and history ───────────────────────────────────────────
+    UNIVERSE_INDEX: str = "NIFTY 500"
+    HISTORY_DAYS: int = 800           # calendar days of daily bars to keep warm
+    MIN_HISTORY_ROWS: int = 260       # bars required before a stock is ranked
+    MIN_TURNOVER_CR: float = 5.0      # median 20d turnover floor, ₹ crore
+    MIN_PRICE: float = 20.0
+
+    # ── Buy Rank factor weights (signed: negative = penalty) ───────────
+    # Keep this a config table; research/factor_eval.py decides the values.
+    # 2026-09-17 eval (1y, Yahoo bars): vol_conf IC −0.013 (t −3.0) → weight 0.
+    # Its 0.10 moved to mom_12_1 (IC +0.065, t 10.6). Re-run the eval yearly.
+    FACTOR_WEIGHTS: Dict[str, float] = {
+        "mom_12_1":  0.35,
+        "mom_6_1":   0.10,
+        "trend":     0.20,
+        "low_vol":   0.15,
+        "liquidity": 0.10,
+        "vol_conf":  0.00,
+        "overheat": -0.10,
+    }
 
     # ── Portfolio config ───────────────────────────────────────────────
     DEFAULT_CAPITAL: float = 100_000.0
@@ -19,6 +50,8 @@ class Settings(BaseSettings):
     MORNING_MINUTE: int = 40
     CLOSING_HOUR: int = 15
     CLOSING_MINUTE: int = 45
+    NIGHTLY_HOUR: int = 20            # NSE end-of-day files land in the evening
+    NIGHTLY_MINUTE: int = 15
 
     UPSTOX_ANALYTICS_TOKEN:   str = ""
     TWELVE_DATA_API_KEY:  str = ""
@@ -119,9 +152,6 @@ class Settings(BaseSettings):
 "HINDZINC.NS","VEDL.NS","SUPREMEIND.NS",
 "PEL.NS","UNIONBANK.NS","IOC.NS",
     ]
-
-    class Config:
-        env_file = ".env"
 
 
 settings = Settings()

@@ -1,8 +1,28 @@
-version: '3.8'
-
 services:
   # ══════════════════════════════════════════════════════════════════
-  # Backend Service — FastAPI
+  # Postgres — the system of record. Same image and settings as the
+  # instance-local Postgres on the EC2 box, so dev == prod.
+  # ══════════════════════════════════════════════════════════════════
+  postgres:
+    image: postgres:16-alpine
+    container_name: ai-arena-postgres
+    environment:
+      POSTGRES_USER: arena
+      POSTGRES_PASSWORD: arena
+      POSTGRES_DB: arena
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U arena -d arena"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    restart: unless-stopped
+
+  # ══════════════════════════════════════════════════════════════════
+  # Backend — FastAPI + scheduler
   # ══════════════════════════════════════════════════════════════════
   backend:
     build:
@@ -11,32 +31,15 @@ services:
     container_name: ai-arena-backend
     ports:
       - "8000:8000"
+    env_file:
+      - ./backend/.env
     environment:
-      # API Configuration
-      AICREDITS_API_KEY: ${AICREDITS_API_KEY:-your_api_key_here}
-      AICREDITS_BASE_URL: https://api.aicredits.in/v1
-      
-      # Database (SQLite inside container)
-      DATABASE_URL: sqlite:///./arena.db
-      
-      # Portfolio Config
-      DEFAULT_CAPITAL: 100000.0
-      TOP_CANDIDATES: 15
-      
-      # Scheduler Timing (IST)
-      MORNING_HOUR: 8
-      MORNING_MINUTE: 40
-      CLOSING_HOUR: 15
-      CLOSING_MINUTE: 45
-      
-      # Optional
-      UPSTOX_ANALYTICS_TOKEN: ${UPSTOX_ANALYTICS_TOKEN:-}
-      TWELVE_DATA_API_KEY: ${TWELVE_DATA_API_KEY:-}
+      DATABASE_URL: postgresql+psycopg://arena:arena@postgres:5432/arena
     volumes:
       - ./backend:/app
-      - backend-db:/app  # Persist database
-    networks:
-      - ai-arena-network
+    depends_on:
+      postgres:
+        condition: service_healthy
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
       interval: 10s
@@ -45,7 +48,7 @@ services:
     restart: unless-stopped
 
   # ══════════════════════════════════════════════════════════════════
-  # Frontend Service — Next.js
+  # Frontend — Next.js
   # ══════════════════════════════════════════════════════════════════
   frontend:
     build:
@@ -55,20 +58,10 @@ services:
     ports:
       - "3000:3000"
     environment:
-      NEXT_PUBLIC_API_URL: http://backend:8000
-    volumes:
-      - ./arena-frontend:/app
+      NEXT_PUBLIC_API_URL: http://localhost:8000
     depends_on:
-      backend:
-        condition: service_healthy
-    networks:
-      - ai-arena-network
+      - backend
     restart: unless-stopped
 
-networks:
-  ai-arena-network:
-    driver: bridge
-
 volumes:
-  backend-db:
-    driver: local
+  pgdata:

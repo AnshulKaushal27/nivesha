@@ -6,7 +6,38 @@ Compete multiple LLM-driven investment strategies against each other in real-tim
 
 ---
 
-## 📌 Overview
+## > **v2 is in progress.** The design lives in [docs/DESIGN.md](docs/DESIGN.md).
+> Phase 0 (data spine + Buy Rank + LangGraph explainer) is built; see *Running v2 locally* below.
+
+## Running v2 locally
+
+```bash
+# 1. Postgres
+docker compose up -d postgres
+
+# 2. Backend (Python 3.12)
+cd backend
+python3.12 -m venv .venv && .venv/bin/pip install -r requirements.txt
+cp .env.example .env                      # fill in AICREDITS_API_KEY, UPSTOX_ANALYTICS_TOKEN
+.venv/bin/alembic upgrade head            # schema
+.venv/bin/python -m jobs.nightly --source yahoo --backfill 250   # dev data, no Upstox token needed
+.venv/bin/python -m research.factor_eval  # does Buy Rank predict anything? (writes research/reports/)
+.venv/bin/uvicorn main:app --reload --port 8000
+
+# 3. Frontend
+cd ../arena-frontend
+npm install && npm run dev                # http://localhost:3000
+```
+
+Production uses `--source upstox` (the scheduler runs it nightly at 20:15 IST).
+`GET /rank`, `GET /rank/{ticker}`, `GET /rank/{ticker}/explain` are the new endpoints;
+the v1 UI is kept at `/legacy` until each of its pages is rebuilt.
+
+Tests: `cd backend && .venv/bin/python -m pytest -q`.
+
+---
+
+📌 Overview
 
 AI Investment Arena simulates a multi-manager hedge fund where different Large Language Models act as portfolio managers with unique investment styles.
 

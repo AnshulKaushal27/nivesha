@@ -18,12 +18,6 @@ from services.valuation import update_valuations
 logger = logging.getLogger(__name__)
 IST = pytz.timezone("Asia/Kolkata")
 
-# Ensure tables exist
-Base.metadata.create_all(bind=engine)
-
-import httpx
-from datetime import date
-
 NSE_HOLIDAYS_2025_2026 = {
     # 2025
     # ===== 2026 =====
@@ -239,6 +233,21 @@ async def morning_job():
         db.close()
 
 
+async def nightly_job():
+    """20:15 IST — universe, daily bars, Buy Rank. Runs in a thread: it is I/O-heavy and synchronous."""
+    if not is_trading_day():
+        logger.info(f"Skipping nightly job — {date.today()} is not a trading day")
+        return
+    from jobs.nightly import run_nightly
+    logger.info("━━━ 🌙  Nightly data job started ━━━")
+    try:
+        summary = await asyncio.to_thread(run_nightly, "upstox", 0, None, True)
+        logger.info(f"━━━ ✅  Nightly done — {summary.get('bars_written', 0)} bars, "
+                    f"{summary.get('scores_written', 0)} scores ━━━")
+    except Exception as exc:
+        logger.error(f"Nightly job error: {exc}")
+
+
 async def closing_job():
     if not is_trading_day():
         logger.info(f"Skipping closing job — {date.today()} is not a trading day")
@@ -286,6 +295,20 @@ def setup_scheduler() -> AsyncIOScheduler:
         replace_existing=True,
         name="Closing Valuation Update",
         misfire_grace_time=300,
+    )
+
+    scheduler.add_job(
+        nightly_job,
+        CronTrigger(
+            hour=settings.NIGHTLY_HOUR,
+            minute=settings.NIGHTLY_MINUTE,
+            day_of_week="mon-fri",
+            timezone=IST,
+        ),
+        id="nightly_job",
+        replace_existing=True,
+        name="Nightly bars + Buy Rank",
+        misfire_grace_time=3600,
     )
 
     return scheduler
