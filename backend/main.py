@@ -28,7 +28,8 @@ if settings.DATABASE_URL.startswith("sqlite"):
 async def lifespan(app: FastAPI):
     scheduler = setup_scheduler()
     scheduler.start()
-    logger.info("✅ APScheduler started (IST timezone)")
+    app.state.scheduler = scheduler
+    logger.info("✅ APScheduler started (IST timezone) — %d jobs", len(scheduler.get_jobs()))
     yield
     scheduler.shutdown(wait=False)
     logger.info("Scheduler stopped")

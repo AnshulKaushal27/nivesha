@@ -227,6 +227,48 @@ class PredictionScore(Base):
     scored_at             = Column(DateTime, default=datetime.utcnow)
 
 
+class MarketHoliday(Base):
+    """NSE trading holidays. Seeded from the static table, refreshed from NSE monthly."""
+    __tablename__ = "market_holidays"
+
+    date   = Column(Date, primary_key=True)
+    name   = Column(String(120))
+    source = Column(String(20), default="static")   # static | nse | fixed
+
+
+class SystemAlert(Base):
+    """Something a human should know about. One open row per kind; re-raising bumps `count`."""
+    __tablename__ = "system_alerts"
+    __table_args__ = (Index("ix_system_alerts_open", "resolved_at", "severity"),)
+
+    id          = Column(Integer, primary_key=True)
+    kind        = Column(String(60), nullable=False, index=True)   # credits_exhausted, job_failed:nightly, …
+    severity    = Column(String(10), nullable=False)               # info | warning | critical
+    message     = Column(Text, nullable=False)
+    detail      = Column(Text)
+    count       = Column(Integer, default=1)
+    first_seen  = Column(DateTime, default=datetime.utcnow)
+    last_seen   = Column(DateTime, default=datetime.utcnow)
+    resolved_at = Column(DateTime)
+    notified_at = Column(DateTime)
+
+
+class LlmUsage(Base):
+    """Tokens per model per feature per day, with an estimated cost. Feeds the credit projection."""
+    __tablename__ = "llm_usage"
+    __table_args__ = (UniqueConstraint("date", "model", "feature", name="uq_llm_usage"),)
+
+    id            = Column(Integer, primary_key=True)
+    date          = Column(Date, nullable=False, index=True)
+    model         = Column(String(80), nullable=False)
+    feature       = Column(String(40), nullable=False)             # chat | guard | compress | explain | arena | heartbeat
+    calls         = Column(Integer, default=0)
+    input_tokens  = Column(Integer, default=0)
+    output_tokens = Column(Integer, default=0)
+    est_cost_usd  = Column(Float, default=0.0)
+    errors        = Column(Integer, default=0)
+
+
 class IngestRun(Base):
     """Audit trail for every batch job so a bad day can be traced."""
     __tablename__ = "ingest_runs"

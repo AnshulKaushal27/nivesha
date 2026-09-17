@@ -750,6 +750,20 @@ Telegram message carries the login link, the callback writes the token to SSM,
 and the feed refuses to start without a token minted today. Read-only
 endpoints keep serving yesterday's data meanwhile.
 
+### 3.3b Operations: the calendar, the alerts, and knowing when credits run out
+
+Added 2026-09-17 (`backend/ops/`). The scheduler runs indefinitely on trading
+days; these pieces make sure a silent failure is impossible.
+
+| Piece | What it does |
+| --- | --- |
+| `ops/holidays.py` | `is_trading_day()` = not a weekend and not in the union of: NSE's published list (`market_holidays`, refreshed on the 1st of each month; NSE publishes next year in December), the static 2026–27 table, and fixed national holidays for any year (Republic Day, Ambedkar Jayanti, Maharashtra Day, Independence Day, Gandhi Jayanti, Christmas). |
+| `scheduler.guarded()` | wraps every job: a crash becomes `job_failed:<name>` alert with the exception, success resolves it. Jobs: morning 08:40, close 15:45, nightly 20:15, heartbeat 07:30, Upstox check 07:45, freshness 21:30, holidays 1st 07:00, predictor safety Sat 09:00. |
+| `ops/alerts.py` | one open `system_alerts` row per kind (count bumps on repeat); log + optional Telegram + optional webhook, re-notified at most every 6 h. `classify_llm_error()` turns a gateway failure into `credits_exhausted` (402 / "insufficient" / "quota"), `llm_auth_failed` (401), `llm_rate_limited` (429) or `llm_gateway_down`. Chat, explainer and the Arena all report through it. |
+| `ops/llm_usage.py` | a LangChain callback on every model meters tokens per day/model/feature with an estimated cost; with `LLM_CREDITS_USD` + `LLM_CREDITS_AS_OF` it projects remaining balance and the run-out date; `credits_low` fires under 20 % or 14 days. |
+| `ops/checks.py` | heartbeat (one 5-token call → names the failure), Upstox token check, data freshness (bars/scores for a trading day, model age, last job outcomes), holiday refresh. |
+| `GET /status` | jobs with next run, open alerts with plain-language help, data dates, spend and projection, calendar coverage. The nav shows a green/amber/red dot; a critical alert also puts a red banner on every page. |
+
 ### 3.4 Avoiding an accidental bill
 
 Do these on day one, before any resource exists:

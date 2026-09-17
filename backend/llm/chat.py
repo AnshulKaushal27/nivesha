@@ -312,13 +312,19 @@ def agent(state: ChatState) -> ChatState:
     summary_block = f"\nEARLIER IN THIS CONVERSATION (compressed memory)\n{summary}\n" if summary else ""
     system = AGENT_SYSTEM.format(today=date.today().isoformat(), screen=_render_screen(state.get("screen")), summary_block=summary_block)
     history = _trim(state["messages"], settings.CHAT_MAX_HISTORY)
-    llm = chat_model(model=settings.CHAT_MODEL, temperature=0.3, max_tokens=900, max_retries=1, read_timeout=60.0).bind_tools(TOOLS)
+    llm = chat_model(model=settings.CHAT_MODEL, temperature=0.3, max_tokens=900, max_retries=1, read_timeout=60.0).bind_tools(TOOLS).with_config(tags=["chat"])
     try:
         resp = _with_retry(lambda: llm.invoke([SystemMessage(content=system), *history]), "agent")
     except Exception as exc:                            # noqa: BLE001
         if not _is_transient(exc):
             raise
         logger.error("agent: gateway unreachable after retries: %s", exc)
+        if not isinstance(exc, GatewayDown):
+            try:
+                from ops.alerts import report_llm_failure
+                report_llm_failure(exc, "chat")
+            except Exception:                       # noqa: BLE001
+                pass
         return {"messages": [AIMessage(
             content="The AI service didn't respond just now, so I couldn't answer. Please ask again in a moment; "
                     "the data on this page is unaffected.",

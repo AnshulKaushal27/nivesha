@@ -4,6 +4,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
 import { ChatDock } from "@/components/ChatDock";
+import { api } from "@/lib/api";
 
 const NAV = [
   { href: "/",        label: "Strength Rank", icon: "◎", hint: "Which stocks are strongest today, scored 1–100" },
@@ -14,6 +15,15 @@ const NAV = [
 export function AppShell({ children }: { children: React.ReactNode }) {
   const path = usePathname();
   const [dark, setDark] = useState(false);
+  const [health, setHealth] = useState<{ overall: "ok" | "warning" | "critical"; critical: string[] } | null>(null);
+
+  useEffect(() => {
+    let alive = true;
+    const poll = () => api.status().then((s) => alive && setHealth({ overall: s.overall, critical: s.alerts.filter((a) => a.severity === "critical").map((a) => a.message) })).catch(() => alive && setHealth(null));
+    poll();
+    const t = setInterval(poll, 60_000);
+    return () => { alive = false; clearInterval(t); };
+  }, []);
 
   useEffect(() => {
     try { if (localStorage.getItem("arena-theme") === "dark") setDark(true); } catch { /* private mode */ }
@@ -64,6 +74,14 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           </nav>
 
           <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 8 }}>
+            <Link href="/status" title={health ? `System: ${health.overall}` : "System status"} aria-label="System status" style={{
+              display: "flex", alignItems: "center", gap: 7, padding: "7px 12px", borderRadius: 999, fontSize: 12.5, fontWeight: 700,
+              background: path?.startsWith("/status") ? "var(--card)" : "transparent", color: "var(--text-2)",
+            }}>
+              <span aria-hidden style={{ width: 9, height: 9, borderRadius: 999, background: !health ? "var(--text-dim)" : health.overall === "ok" ? "var(--strong)" : health.overall === "warning" ? "var(--neutral)" : "var(--weak)",
+                                          boxShadow: health && health.overall !== "ok" ? "0 0 0 3px color-mix(in srgb, currentColor 15%, transparent)" : "none" }} />
+              System
+            </Link>
             <button onClick={() => setDark((d) => !d)} aria-label={dark ? "Switch to light theme" : "Switch to dark theme"} style={{
               width: 40, height: 40, borderRadius: 999, background: "var(--card)", boxShadow: "var(--shadow)", display: "grid", placeItems: "center", fontSize: 15,
             }}>
@@ -72,6 +90,14 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           </div>
         </div>
       </header>
+
+      {health && health.critical.length > 0 && !path?.startsWith("/status") && (
+        <div role="alert" style={{ maxWidth: 1240, margin: "8px auto 0", padding: "10px 24px" }}>
+          <Link href="/status" className="card" style={{ display: "flex", gap: 10, alignItems: "center", padding: "10px 14px", background: "var(--weak-soft)", borderColor: "var(--weak)", color: "var(--weak-ink)", fontSize: 13, fontWeight: 700 }}>
+            <span aria-hidden>⚠</span> {health.critical[0]} <span style={{ marginLeft: "auto", fontWeight: 600, opacity: 0.8 }}>Open status →</span>
+          </Link>
+        </div>
+      )}
 
       <main style={{ maxWidth: 1240, margin: "0 auto", padding: "20px 24px 64px" }}>
         {children}

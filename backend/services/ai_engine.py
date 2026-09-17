@@ -237,4 +237,10 @@ async def generate_portfolio(
             last_error = exc
             logger.warning(f"[{model_name}] Attempt {attempt} failed: {exc}")
 
+    try:
+        from ops.alerts import report_llm_failure
+        if last_error is not None:
+            report_llm_failure(last_error, f"arena:{model_name}")
+    except Exception:                                   # noqa: BLE001
+        pass
     raise RuntimeError(f"[{model_name}] All LLM attempts failed. Last error: {last_error}")

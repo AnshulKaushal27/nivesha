@@ -154,7 +154,7 @@ def generate(state: ExplainState) -> ExplainState:
     if state.get("offending"):
         user += ("\n\nYour previous draft used numbers that are NOT in the table: "
                  f"{', '.join(state['offending'])}. Rewrite using only numbers from the table.")
-    llm = structured(Explanation)
+    llm = structured(Explanation).with_config(tags=["explain"])
     result: Explanation = llm.invoke([("system", SYSTEM), ("user", user)])
     return {"draft": result.model_dump(), "attempts": state.get("attempts", 0) + 1}
 
@@ -232,6 +232,11 @@ def explain_rank(db: Session, ticker: str, as_of: DateType | None = None) -> dic
                         final.get("attempts", 1), final.get("dropped", 0))
     except Exception as exc:                            # noqa: BLE001 — fall back, never 500
         logger.warning("explain graph failed for %s: %s — using template", ticker, exc)
+        try:
+            from ops.alerts import report_llm_failure
+            report_llm_failure(exc, "explain")
+        except Exception:                               # noqa: BLE001
+            pass
         t = template_explanation(score)
         return _persist(db, score, t["bullets"], t["watch_out"], "template", 0, 0)
 

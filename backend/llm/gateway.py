@@ -40,7 +40,10 @@ def chat(
     read_timeout: float = 60.0,
     **kwargs: Any,
 ) -> ChatOpenAI:
-    """A plain chat model bound to the gateway. Connect failures surface in 5 s, not 10 s+."""
+    """A plain chat model bound to the gateway. Connect failures surface in 5 s, not 10 s+.
+    Every call is metered (tokens, estimated cost) by ops.llm_usage."""
+    from ops.llm_usage import recorder
+    callbacks = list(kwargs.pop("callbacks", []) or []) + [recorder]
     return ChatOpenAI(
         model=model or settings.LLM_MODEL,
         api_key=settings.AICREDITS_API_KEY or "missing",
@@ -49,6 +52,7 @@ def chat(
         max_tokens=max_tokens,
         timeout=httpx.Timeout(read_timeout, connect=5.0),
         max_retries=max_retries,
+        callbacks=callbacks,
         **kwargs,
     )
 

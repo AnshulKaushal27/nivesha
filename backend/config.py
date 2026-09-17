@@ -30,6 +30,16 @@ class Settings(BaseSettings):
     CHAT_WEB_SEARCH: bool = True
     CHAT_LLM_ATTEMPTS: int = 2                    # retries around a model call when the gateway drops
 
+    # ── Operations: alerts, credit tracking ────────────────────────────
+    TELEGRAM_BOT_TOKEN: str = ""                  # optional: alerts pushed to a Telegram chat
+    TELEGRAM_CHAT_ID: str = ""
+    ALERT_WEBHOOK_URL: str = ""                   # optional: POST {kind, severity, message} to Slack/Discord/n8n/etc.
+    LLM_CREDITS_USD: float = 0.0                  # your gateway balance when you last checked (0 = unknown)
+    LLM_CREDITS_AS_OF: str = ""                   # ISO date of that check, e.g. 2026-09-17
+    LLM_PRICES_JSON: str = ""                     # optional override: {"model": [in_usd_per_1M, out_usd_per_1M]}
+    ALERT_CREDITS_LOW_PCT: float = 20.0           # warn when estimated remaining < this % of the balance
+    ALERT_CREDITS_LOW_DAYS: int = 14              # …or fewer than this many days at the current burn rate
+
     # ── Database ───────────────────────────────────────────────────────
     # SQLite for a zero-setup start; Postgres for real work:
     #   postgresql+psycopg://arena:arena@localhost:5432/arena

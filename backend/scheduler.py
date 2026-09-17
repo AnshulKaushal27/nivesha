@@ -18,54 +18,27 @@ from services.valuation import update_valuations
 logger = logging.getLogger(__name__)
 IST = pytz.timezone("Asia/Kolkata")
 
-NSE_HOLIDAYS_2025_2026 = {
-    # 2025
-    # ===== 2026 =====
-    date(2026, 1, 15),   # Municipal Corporation Election - Maharashtra
-    date(2026, 1, 26),   # Republic Day
-    date(2026, 3, 3),    # Holi
-    date(2026, 3, 26),   # Shri Ram Navami
-    date(2026, 3, 31),   # Shri Mahavir Jayanti
-    date(2026, 4, 3),    # Good Friday
-    date(2026, 4, 14),   # Dr. Baba Saheb Ambedkar Jayanti
-    date(2026, 5, 1),    # Maharashtra Day
-    date(2026, 5, 28),   # Bakri Id
-    date(2026, 6, 26),   # Muharram
-    date(2026, 9, 14),   # Ganesh Chaturthi
-    date(2026, 10, 2),   # Gandhi Jayanti
-    date(2026, 10, 20),  # Dussehra
-    date(2026, 11, 10),  # Diwali-Balipratipada
-    date(2026, 11, 24),  # Guru Nanak Jayanti
-    date(2026, 12, 25),  # Christmas
-    # ===== 2027 =====
-    date(2027, 1, 26),   # Republic Day
-    date(2027, 3, 1),    # Mahashivratri
-    date(2027, 3, 22),   # Holi
-    date(2027, 3, 30),   # Good Friday
-    date(2027, 4, 11),   # Id-Ul-Fitr (tentative)
-    date(2027, 4, 14),   # Dr. Baba Saheb Ambedkar Jayanti
-    date(2027, 4, 21),   # Ram Navami
-    date(2027, 5, 1),    # Maharashtra Day
-    date(2027, 6, 17),   # Bakri Id (tentative)
-    date(2027, 8, 15),   # Independence Day
-    date(2027, 9, 5),    # Ganesh Chaturthi
-    date(2027, 10, 2),   # Gandhi Jayanti
-    date(2027, 10, 9),   # Dussehra
-    date(2027, 11, 1),   # Diwali Laxmi Pujan
-    date(2027, 11, 2),   # Diwali Balipratipada
-    date(2027, 11, 15),  # Guru Nanak Jayanti
-    date(2027, 12, 25),  # Christmas
-}
+from ops.holidays import is_trading_day  # self-maintaining NSE calendar (static seed + NSE refresh + fixed national days)
+from ops.alerts import raise_alert, resolve
+
+def guarded(name: str):
+    """Wrap a job so any exception becomes a recorded alert (never a silent skip), and success resolves it."""
+    def deco(fn):
+        async def wrapper(*a, **kw):
+            try:
+                result = await fn(*a, **kw)
+                resolve(f"job_failed:{name}")
+                return result
+            except Exception as exc:  # noqa: BLE001
+                logger.exception("job %s crashed", name)
+                raise_alert(f"job_failed:{name}", f"Scheduled job '{name}' crashed: {type(exc).__name__}: {str(exc)[:300]}", "warning",
+                            detail=repr(exc)[:1500])
+                return {"error": str(exc)}
+        wrapper.__name__ = fn.__name__
+        return wrapper
+    return deco
 
 
-def is_trading_day(d: date | None = None) -> bool:
-    """Returns True only if d is a weekday and not an NSE holiday."""
-    d = d or date.today()
-    if d.weekday() >= 5:          # Saturday=5, Sunday=6
-        return False
-    if d in NSE_HOLIDAYS_2025_2026:
-        return False
-    return True
 # ── Helper ─────────────────────────────────────────────────────────────────
 
 def _get_prev_context(db, model_name: str) -> dict | None:
@@ -100,6 +73,7 @@ def _get_prev_context(db, model_name: str) -> dict | None:
 
 # ── Jobs ───────────────────────────────────────────────────────────────────
 
+@guarded("morning_job")
 async def morning_job():
     if not is_trading_day():
         logger.info(f"Skipping morning job — {date.today()} is not a trading day")
@@ -240,6 +214,7 @@ async def morning_job():
         db.close()
 
 
+@guarded("nightly_job")
 async def nightly_job():
     """20:15 IST — universe, daily bars, Buy Rank. Runs in a thread: it is I/O-heavy and synchronous."""
     if not is_trading_day():
@@ -255,6 +230,7 @@ async def nightly_job():
         logger.error(f"Nightly job error: {exc}")
 
 
+@guarded("predictor_job")
 async def predictor_job():
     """Saturday 09:00 IST — retrain the beat-the-market model on full history."""
     from database import SessionLocal as _SL
@@ -270,6 +246,7 @@ async def predictor_job():
         logger.error(f"Predictor job error: {exc}")
 
 
+@guarded("closing_job")
 async def closing_job():
     if not is_trading_day():
         logger.info(f"Skipping closing job — {date.today()} is not a trading day")
@@ -284,6 +261,35 @@ async def closing_job():
         logger.error(f"Closing job error: {exc}")
     finally:
         db.close()
+
+
+
+async def heartbeat_job():
+    """07:30 daily — one tiny LLM call: names credits-exhausted / bad key / gateway down, and updates the credit projection."""
+    from ops.checks import llm_heartbeat
+    res = await asyncio.to_thread(llm_heartbeat)
+    logger.info(f"LLM heartbeat: {res}")
+
+
+async def upstox_check_job():
+    """07:45 trading days — is the Upstox token still valid before the morning round?"""
+    if not is_trading_day():
+        return
+    from ops.checks import upstox_check
+    logger.info(f"Upstox check: {await asyncio.to_thread(upstox_check)}")
+
+
+async def freshness_job():
+    """21:30 trading days — did bars, scores and the model keep up today? Any job failures?"""
+    from ops.checks import data_freshness
+    res = await asyncio.to_thread(data_freshness)
+    logger.info(f"Freshness: bars {res.get('latest_bar')} scores {res.get('latest_rank')} model {res.get('model_as_of')}")
+
+
+async def holidays_job():
+    """1st of every month 07:00 — merge NSE's published holiday list (next year appears in December)."""
+    from ops.checks import holidays_refresh
+    logger.info(f"Holiday refresh: {await asyncio.to_thread(holidays_refresh)}")
 
 
 # ── Scheduler factory ──────────────────────────────────────────────────────
@@ -344,7 +350,33 @@ def setup_scheduler() -> AsyncIOScheduler:
         misfire_grace_time=6 * 3600,
     )
 
+    for fn, trig, jid, name in (
+        (heartbeat_job,    CronTrigger(hour=7,  minute=30, timezone=IST),                    "heartbeat_job",    "LLM heartbeat + credit projection"),
+        (upstox_check_job, CronTrigger(hour=7,  minute=45, day_of_week="mon-fri", timezone=IST), "upstox_check_job", "Upstox token check"),
+        (freshness_job,    CronTrigger(hour=21, minute=30, day_of_week="mon-fri", timezone=IST), "freshness_job",    "Data freshness + job outcomes"),
+        (holidays_job,     CronTrigger(day=1,   hour=7, minute=0, timezone=IST),             "holidays_job",     "NSE holiday list refresh"),
+    ):
+        scheduler.add_job(fn, trig, id=jid, replace_existing=True, name=name, misfire_grace_time=3600, coalesce=True)
+
+    # Seed the trading calendar so every job above can ask is_trading_day() from day one.
+    try:
+        from ops.holidays import seed_static
+        with SessionLocal() as db:
+            n = seed_static(db)
+        logger.info(f"Trading calendar ready ({n} holiday rows added)")
+    except Exception as exc:  # noqa: BLE001 — before the migration runs, the table may not exist yet
+        logger.warning(f"Holiday seed skipped: {exc}")
+
     return scheduler
+
+
+def job_schedule(scheduler) -> list[dict]:
+    """For the status page: every job with its next fire time."""
+    out = []
+    for j in scheduler.get_jobs():
+        nxt = j.next_run_time
+        out.append({"id": j.id, "name": j.name, "next_run": nxt.isoformat() if nxt else None, "trigger": str(j.trigger)})
+    return sorted(out, key=lambda r: r["next_run"] or "")
 
 
 def _portfolio_to_dict(p: Portfolio) -> dict:

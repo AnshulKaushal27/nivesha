@@ -107,6 +107,34 @@ export interface PortfolioDetail extends Omit<PortfolioListItem, "holdings_count
   valuation_history: { date: string; portfolio_value: number; return_pct: number }[];
 }
 
+/* ── System status ───────────────────────────────────────────────────── */
+export interface SystemAlert {
+  id: number; kind: string; severity: "info" | "warning" | "critical"; message: string; detail: string | null;
+  count: number; first_seen: string; last_seen: string; help: string | null;
+}
+export interface SystemStatus {
+  overall: "ok" | "warning" | "critical";
+  checked_at: string;
+  today: { date: string; trading_day: boolean; holiday: string | null; next_trading_day: string };
+  alerts: SystemAlert[];
+  jobs: Record<string, { status: string; started_at: string; finished_at: string; rows: number; detail: string }>;
+  schedule: { id: string; name: string; next_run: string | null; trigger: string }[];
+  data: { latest_bars: string; latest_scores: string; model_trained: string | null; model_oos: Record<string, number | null> | null };
+  llm: {
+    today: { calls: number; input_tokens: number; output_tokens: number; est_cost_usd: number; errors: number };
+    last_30_days: { calls: number; input_tokens: number; output_tokens: number; est_cost_usd: number; errors: number };
+    all_time: { calls: number; est_cost_usd: number };
+    burn_per_day_usd: number;
+    by_feature_30d: { feature: string; calls: number; est_cost_usd: number }[];
+    by_model_30d: { model: string; calls: number; est_cost_usd: number }[];
+    daily_30d: { date: string; est_cost_usd: number; calls: number }[];
+    projection: { balance_usd: number; as_of: string; spent_since_usd: number; remaining_usd: number; remaining_pct: number; burn_per_day_usd: number; days_left: number | null; runs_out_on: string | null } | { error: string } | null;
+    note: string;
+  };
+  calendar: { years_covered: number[]; total: number; by_source: Record<string, number>; next: { date: string; name: string }[] };
+  channels: { telegram: boolean; webhook: boolean };
+}
+
 async function get<T>(path: string): Promise<T> {
   const res = await fetch(`${API}${path}`, { cache: "no-store" });
   if (!res.ok) throw new Error(`${res.status} ${res.statusText} — ${path}`);
@@ -126,6 +154,11 @@ export const api = {
   },
   predictLive: () => get<PredictLive>("/predict/live"),
   predictOne: (ticker: string) => get<PredictionItem & { oos: PredictRun["oos"]; history_years: number }>(`/predict/${encodeURIComponent(ticker)}`),
+
+  status: () => get<SystemStatus>("/status"),
+  resolveAlert: (id: number) => post<{ ok: boolean }>(`/alerts/${id}/resolve`),
+  runChecks: () => post<Record<string, unknown>>("/checks/run"),
+  testAlert: () => post<{ ok: boolean; notified: boolean; channels: { telegram: boolean; webhook: boolean } }>("/alerts/test"),
 
   simToday: () => get<SimData>("/simulation/today"),
   leaderboard: () => get<LeaderboardEntry[]>("/leaderboard"),

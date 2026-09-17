@@ -1,8 +1,9 @@
 from datetime import date
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Request
 from sqlalchemy.orm import Session
 
+from config import settings
 from database import get_db
 from services.valuation import update_valuations
 # routes/admin.py
@@ -31,6 +32,74 @@ async def simulate_and_save(db: Session = Depends(get_db)):
             "model_results":     result.get("model_results", []),
         },
     }
+
+
+@router.get("/status")
+def system_status(request: Request, db: Session = Depends(get_db)):
+    """Everything a human needs to know the system is healthy: jobs, alerts, data, credits, calendar."""
+    from datetime import datetime
+    from sqlalchemy import func, select
+    from database import DailyBar, FactorScore, IngestRun, ModelRun
+    from ops import holidays
+    from ops.alerts import KIND_HELP, open_alerts
+    from ops.llm_usage import summary as usage_summary
+    from scheduler import job_schedule
+
+    alerts = [{"id": a.id, "kind": a.kind, "severity": a.severity, "message": a.message, "detail": a.detail, "count": a.count,
+               "first_seen": str(a.first_seen), "last_seen": str(a.last_seen), "help": KIND_HELP.get(a.kind)} for a in open_alerts(db)]
+    jobs = {}
+    for job in db.execute(select(IngestRun.job).distinct()).scalars().all():
+        r = db.execute(select(IngestRun).where(IngestRun.job == job).order_by(IngestRun.started_at.desc()).limit(1)).scalar_one_or_none()
+        jobs[job] = {"status": r.status, "started_at": str(r.started_at), "finished_at": str(r.finished_at), "rows": r.rows, "detail": (r.detail or "")[:300]}
+    sched = getattr(request.app.state, "scheduler", None)
+    last_model = db.execute(select(ModelRun).order_by(ModelRun.as_of.desc()).limit(1)).scalar_one_or_none()
+    worst = "critical" if any(a["severity"] == "critical" for a in alerts) else "warning" if any(a["severity"] == "warning" for a in alerts) else "ok"
+    return {
+        "overall": worst,
+        "checked_at": datetime.utcnow().isoformat() + "Z",
+        "today": {"date": str(date.today()), "trading_day": holidays.is_trading_day(), "holiday": holidays.holiday_name(date.today()),
+                  "next_trading_day": str(holidays.next_trading_day())},
+        "alerts": alerts,
+        "jobs": jobs,
+        "schedule": job_schedule(sched) if sched else [],
+        "data": {"latest_bars": str(db.execute(select(func.max(DailyBar.date))).scalar()),
+                 "latest_scores": str(db.execute(select(func.max(FactorScore.date))).scalar()),
+                 "model_trained": str(last_model.as_of) if last_model else None,
+                 "model_oos": last_model.meta.get("oos") if last_model else None},
+        "llm": usage_summary(db),
+        "calendar": holidays.coverage(),
+        "channels": {"telegram": bool(settings.TELEGRAM_BOT_TOKEN and settings.TELEGRAM_CHAT_ID), "webhook": bool(settings.ALERT_WEBHOOK_URL)},
+    }
+
+
+@router.post("/alerts/{alert_id}/resolve")
+def resolve_alert(alert_id: int, db: Session = Depends(get_db)):
+    from datetime import datetime
+    from database import SystemAlert
+    a = db.get(SystemAlert, alert_id)
+    if not a:
+        return {"ok": False}
+    a.resolved_at = datetime.utcnow()
+    db.commit()
+    return {"ok": True, "kind": a.kind}
+
+
+@router.post("/checks/run")
+async def run_checks():
+    """Run every health check now (heartbeat, Upstox, freshness, holidays)."""
+    import asyncio
+    from ops.checks import run_all
+    return await asyncio.to_thread(run_all)
+
+
+@router.post("/alerts/test")
+def test_alert():
+    """Send a test alert through every configured channel."""
+    from ops.alerts import raise_alert, resolve
+    a = raise_alert("test_alert", "This is a test alert from Nivesha. If you can read this, notifications work.", "info")
+    resolve("test_alert")
+    return {"ok": True, "notified": a.notified_at is not None,
+            "channels": {"telegram": bool(settings.TELEGRAM_BOT_TOKEN and settings.TELEGRAM_CHAT_ID), "webhook": bool(settings.ALERT_WEBHOOK_URL)}}
 
 
 @router.post("/train-predictor")
