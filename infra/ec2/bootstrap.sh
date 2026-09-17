@@ -78,7 +78,7 @@ sudo -u $APP_USER bash -c "cd $SRC/backend && .venv/bin/alembic upgrade head"
 
 # ── 6. frontend build ────────────────────────────────────────────────────────
 log "Frontend build"
-echo "NEXT_PUBLIC_API_URL=https://${DOMAIN}/api" > $SRC/arena-frontend/.env.production
+echo "NEXT_PUBLIC_API_URL=/api" > $SRC/arena-frontend/.env.production   # relative: works on any hostname (CloudFront, custom domain)
 chown $APP_USER:$APP_USER $SRC/arena-frontend/.env.production
 sudo -u $APP_USER bash -c "cd $SRC/arena-frontend && npm ci --no-audit --no-fund >/dev/null && npm run build >/dev/null"
 
