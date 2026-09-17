@@ -18,10 +18,11 @@ from __future__ import annotations
 
 import json
 import logging
+import time
 from datetime import date
 from typing import Annotated, AsyncIterator, Literal, TypedDict
 
-from langchain_core.messages import AIMessage, AnyMessage, HumanMessage, SystemMessage, ToolMessage
+from langchain_core.messages import AIMessage, AnyMessage, HumanMessage, RemoveMessage, SystemMessage, ToolMessage
 from langgraph.graph import END, START, StateGraph
 from langgraph.graph.message import add_messages
 from langgraph.prebuilt import ToolNode, tools_condition
@@ -35,6 +36,56 @@ logger = logging.getLogger(__name__)
 
 MAX_MESSAGE_CHARS = 4000
 MAX_SCREEN_CHARS = 7000
+TRANSIENT_ERRORS = ("ConnectionError", "ConnectError", "APIConnectionError", "APITimeoutError", "RateLimitError",
+                    "InternalServerError", "ServiceUnavailableError", "ReadTimeout", "RemoteProtocolError", "GatewayDown")
+
+
+def _is_transient(exc: BaseException) -> bool:
+    chain, e = [], exc
+    while e is not None and len(chain) < 6:
+        chain.append(type(e).__name__)
+        e = e.__cause__ or e.__context__
+    return any(any(n in c for n in TRANSIENT_ERRORS) for c in chain)
+
+
+# Circuit breaker: after the gateway fails all retries, skip model calls for a short
+# window so the next messages answer instantly instead of waiting on timeouts.
+BREAKER_SECONDS = 30.0
+_breaker_open_until = 0.0
+
+
+class GatewayDown(ConnectionError):
+    """Raised without a network call while the circuit breaker is open."""
+
+
+def _breaker_open() -> bool:
+    return time.monotonic() < _breaker_open_until
+
+
+def _trip_breaker() -> None:
+    global _breaker_open_until
+    _breaker_open_until = time.monotonic() + BREAKER_SECONDS
+
+
+def _with_retry(fn, what: str):
+    """Call fn() up to CHAT_LLM_ATTEMPTS times on transient gateway errors, with backoff."""
+    if _breaker_open():
+        raise GatewayDown("gateway circuit breaker open")
+    last = None
+    for attempt in range(1, settings.CHAT_LLM_ATTEMPTS + 1):
+        try:
+            return fn()
+        except Exception as exc:                        # noqa: BLE001
+            last = exc
+            if not _is_transient(exc):
+                raise
+            if attempt == settings.CHAT_LLM_ATTEMPTS:
+                _trip_breaker()
+                raise
+            wait = 1.0 * attempt
+            logger.warning("%s: transient gateway error (%s), retry %d/%d in %.1fs", what, type(exc).__name__, attempt, settings.CHAT_LLM_ATTEMPTS, wait)
+            time.sleep(wait)
+    raise last  # pragma: no cover
 
 
 # ── State and schemas ──────────────────────────────────────────────────────
@@ -43,6 +94,7 @@ class ChatState(TypedDict, total=False):
     messages: Annotated[list[AnyMessage], add_messages]
     screen: dict | None
     guard: dict | None
+    summary: str            # compressed memory of turns that were removed from `messages`
 
 
 class GuardVerdict(BaseModel):
@@ -125,7 +177,13 @@ How to answer
 
 SCREEN CONTEXT (what the user sees right now)
 {screen}
-"""
+{summary_block}"""
+
+SUMMARY_SYSTEM = """You compress a conversation between a user and Voxa, an assistant inside an Indian
+stock-market app, into a memory note for later turns. Keep, in this order, only what a future turn
+could need: the user's goals, preferences and constraints they stated; stocks, sectors and numbers
+discussed with the conclusions reached; open questions. Third person, plain sentences, no headings,
+at most 180 words. Merge with the existing note; never repeat what is already there."""
 
 
 def _render_screen(screen: dict | None) -> str:
@@ -169,8 +227,9 @@ def guard(state: ChatState) -> ChatState:
             f"Recent conversation:\n{ctx or '(none)'}\n\nLatest user message:\n{text}")
 
     try:
-        v: GuardVerdict = structured(GuardVerdict, model=settings.CHAT_GUARD_MODEL, temperature=0, max_tokens=200)\
-            .with_config(tags=["guard"]).invoke([("system", GUARD_SYSTEM), ("user", user)])
+        llm = structured(GuardVerdict, model=settings.CHAT_GUARD_MODEL, temperature=0, max_tokens=200,
+                         max_retries=1, read_timeout=20.0).with_config(tags=["guard"])
+        v: GuardVerdict = _with_retry(lambda: llm.invoke([("system", GUARD_SYSTEM), ("user", user)]), "guard")
         verdict = v.model_dump()
     except Exception as exc:                            # noqa: BLE001 — a guard outage must not break chat
         logger.warning("guard model failed (%s); allowing with main-model rules", exc)
@@ -186,12 +245,62 @@ def guard(state: ChatState) -> ChatState:
     return {"guard": verdict, "messages": [AIMessage(content=reply, additional_kwargs={"declined": True, "category": verdict["category"]})]}
 
 
-def route_after_guard(state: ChatState) -> Literal["agent", "end"]:
-    return "agent" if (state.get("guard") or {}).get("allow") else "end"
+def route_after_guard(state: ChatState) -> Literal["compress", "end"]:
+    return "compress" if (state.get("guard") or {}).get("allow") else "end"
+
+
+def _chars(messages: list[AnyMessage]) -> int:
+    return sum(len(m.content) if isinstance(m.content, str) else len(str(m.content)) for m in messages)
+
+
+def _cut_index(messages: list[AnyMessage], keep: int) -> int:
+    """Index before which messages get summarised: keep the last `keep`, but start the kept
+    part at a Human turn so no tool call is separated from its result."""
+    i = max(0, len(messages) - keep)
+    while i > 0 and not isinstance(messages[i], HumanMessage):
+        i -= 1
+    return i
+
+
+def compress(state: ChatState) -> ChatState:
+    """
+    Memory compression. When the thread is long, fold the older turns into
+    `summary` (using the light model) and delete them from `messages`. The
+    current user message and the last few turns stay verbatim.
+    """
+    msgs = state.get("messages", [])
+    if len(msgs) < settings.CHAT_COMPRESS_AFTER and _chars(msgs) < settings.CHAT_COMPRESS_CHARS:
+        return {}
+    cut = _cut_index(msgs, settings.CHAT_KEEP_RECENT)
+    old = [m for m in msgs[:cut] if not m.additional_kwargs.get("transient")]
+    if len(old) < 4:
+        return {}
+
+    lines = []
+    for m in old:
+        if isinstance(m, HumanMessage):
+            lines.append(f"User: {m.content}")
+        elif isinstance(m, AIMessage) and m.content and not m.tool_calls:
+            lines.append(f"Voxa: {m.content}")
+        elif isinstance(m, ToolMessage):
+            lines.append(f"[tool {m.name}: {str(m.content)[:400]}]")
+    transcript = "\n".join(lines)[:12_000]
+    existing = state.get("summary") or "(none yet)"
+    user = f"Existing note:\n{existing}\n\nNew turns to fold in:\n{transcript}\n\nWrite the updated note."
+
+    try:
+        llm = chat_model(model=settings.CHAT_GUARD_MODEL, temperature=0, max_tokens=350, max_retries=1, read_timeout=30.0).with_config(tags=["compress"])
+        new_summary = _with_retry(lambda: llm.invoke([("system", SUMMARY_SYSTEM), ("user", user)]).content, "compress").strip()
+    except Exception as exc:                            # noqa: BLE001 — keep going with the raw history this turn
+        logger.warning("compression failed (%s); keeping full history this turn", exc)
+        return {}
+
+    logger.info("compressed %d messages (%d chars) into a %d-char summary", len(msgs[:cut]), _chars(msgs[:cut]), len(new_summary))
+    return {"summary": new_summary, "messages": [RemoveMessage(id=m.id) for m in msgs[:cut] if m.id]}
 
 
 def _trim(messages: list[AnyMessage], limit: int) -> list[AnyMessage]:
-    tail = messages[-limit:]
+    tail = [m for m in messages if not m.additional_kwargs.get("transient")][-limit:]
     # never start with a dangling tool result or an assistant turn
     while tail and not isinstance(tail[0], HumanMessage):
         tail = tail[1:]
@@ -199,10 +308,21 @@ def _trim(messages: list[AnyMessage], limit: int) -> list[AnyMessage]:
 
 
 def agent(state: ChatState) -> ChatState:
-    system = AGENT_SYSTEM.format(today=date.today().isoformat(), screen=_render_screen(state.get("screen")))
+    summary = state.get("summary")
+    summary_block = f"\nEARLIER IN THIS CONVERSATION (compressed memory)\n{summary}\n" if summary else ""
+    system = AGENT_SYSTEM.format(today=date.today().isoformat(), screen=_render_screen(state.get("screen")), summary_block=summary_block)
     history = _trim(state["messages"], settings.CHAT_MAX_HISTORY)
-    llm = chat_model(model=settings.CHAT_MODEL, temperature=0.3, max_tokens=900).bind_tools(TOOLS)
-    resp = llm.invoke([SystemMessage(content=system), *history])
+    llm = chat_model(model=settings.CHAT_MODEL, temperature=0.3, max_tokens=900, max_retries=1, read_timeout=60.0).bind_tools(TOOLS)
+    try:
+        resp = _with_retry(lambda: llm.invoke([SystemMessage(content=system), *history]), "agent")
+    except Exception as exc:                            # noqa: BLE001
+        if not _is_transient(exc):
+            raise
+        logger.error("agent: gateway unreachable after retries: %s", exc)
+        return {"messages": [AIMessage(
+            content="The AI service didn't respond just now, so I couldn't answer. Please ask again in a moment; "
+                    "the data on this page is unaffected.",
+            additional_kwargs={"declined": True, "transient": True})]}
     return {"messages": [resp]}
 
 
@@ -248,10 +368,12 @@ async def graph():
         if _graph is None:
             g = StateGraph(ChatState)
             g.add_node("guard", guard)
+            g.add_node("compress", compress)
             g.add_node("agent", agent)
             g.add_node("tools", ToolNode(TOOLS))
             g.add_edge(START, "guard")
-            g.add_conditional_edges("guard", route_after_guard, {"agent": "agent", "end": END})
+            g.add_conditional_edges("guard", route_after_guard, {"compress": "compress", "end": END})
+            g.add_edge("compress", "agent")
             g.add_conditional_edges("agent", tools_condition, {"tools": "tools", END: END})
             g.add_edge("tools", "agent")
             _graph = g.compile(checkpointer=await get_checkpointer())
@@ -304,6 +426,9 @@ async def stream_chat(thread_id: str, message: str, screen: dict | None) -> Asyn
                                 yield {"type": "delta", "text": msgs[-1].content}
                         else:
                             yield {"type": "status", "stage": "thinking", "label": "Thinking"}
+                    elif node == "compress":
+                        if (out or {}).get("summary"):
+                            yield {"type": "status", "stage": "compress", "label": "Tidying up our earlier conversation"}
                     elif node == "agent":
                         msgs = (out or {}).get("messages") or []
                         last = msgs[-1] if msgs else None
@@ -315,14 +440,20 @@ async def stream_chat(thread_id: str, message: str, screen: dict | None) -> Asyn
                                    "label": f"{TOOL_LABEL.get(tc['name'], tc['name'])}{f' · {hint}' if hint else ''}"}
         state = await g.aget_state(cfg)
         final = next((m for m in reversed(state.values.get("messages", [])) if isinstance(m, AIMessage) and m.content), None)
+        if final is not None and final.additional_kwargs.get("declined") and final.additional_kwargs.get("transient"):
+            declined = True
+            yield {"type": "delta", "text": final.content}
         yield {"type": "done", "message": final.content if final else "", "declined": declined,
-               "category": category, "tools_used": tools_used}
+               "category": category, "tools_used": tools_used,
+               "compressed": bool(state.values.get("summary")), "messages_in_memory": len(state.values.get("messages", []))}
     except Exception as exc:                            # noqa: BLE001
         logger.exception("chat stream failed")
-        yield {"type": "error", "message": f"Something went wrong: {type(exc).__name__}. Please try again."}
+        friendly = ("The AI service is unreachable right now. Please try again in a moment."
+                    if _is_transient(exc) else f"Something went wrong ({type(exc).__name__}). Please try again.")
+        yield {"type": "error", "message": friendly}
 
 
-async def history(thread_id: str) -> list[dict]:
+async def history(thread_id: str) -> dict:
     g = await graph()
     state = await g.aget_state(_config(thread_id))
     out = []
@@ -331,7 +462,7 @@ async def history(thread_id: str) -> list[dict]:
             out.append({"role": "user", "content": m.content})
         elif isinstance(m, AIMessage) and m.content and not m.tool_calls:
             out.append({"role": "assistant", "content": m.content, "declined": bool(m.additional_kwargs.get("declined"))})
-    return out
+    return {"messages": out, "summary": state.values.get("summary") or None}
 
 
 async def forget(thread_id: str) -> bool:

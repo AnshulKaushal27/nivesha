@@ -69,7 +69,8 @@ async def chat(body: ChatIn, request: Request):
 @router.get("/{thread_id}/history")
 async def get_history(thread_id: str):
     _check_thread(thread_id)
-    return {"thread_id": thread_id, "messages": await chat_graph.history(thread_id)}
+    h = await chat_graph.history(thread_id)
+    return {"thread_id": thread_id, **h}
 
 
 @router.delete("/{thread_id}")

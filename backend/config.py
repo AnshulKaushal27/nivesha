@@ -22,9 +22,13 @@ class Settings(BaseSettings):
     # ── Chat assistant ─────────────────────────────────────────────────
     CHAT_MODEL: str = "gpt-4o-mini"               # answers
     CHAT_GUARD_MODEL: str = "openai/gpt-4.1-nano" # screens every prompt first
-    CHAT_MAX_HISTORY: int = 24                    # messages sent to the model per turn
+    CHAT_MAX_HISTORY: int = 24                    # messages sent to the model per turn (hard cap)
+    CHAT_COMPRESS_AFTER: int = 18                 # summarise older turns once a thread has this many messages…
+    CHAT_COMPRESS_CHARS: int = 20_000             # …or this many characters of history
+    CHAT_KEEP_RECENT: int = 8                     # messages kept verbatim after a compression
     CHAT_RATE_LIMIT_PER_MIN: int = 12
     CHAT_WEB_SEARCH: bool = True
+    CHAT_LLM_ATTEMPTS: int = 2                    # retries around a model call when the gateway drops
 
     # ── Database ───────────────────────────────────────────────────────
     # SQLite for a zero-setup start; Postgres for real work:

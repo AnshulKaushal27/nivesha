@@ -7,7 +7,7 @@ import { API } from "@/lib/api";
 import { getScreen, subscribeScreen, SUGGESTIONS } from "@/lib/screen";
 
 interface Msg { role: "user" | "assistant"; content: string; declined?: boolean; tools?: string[]; pending?: boolean }
-interface Frame { type: "status" | "delta" | "done" | "error"; text?: string; label?: string; stage?: string; message?: string; declined?: boolean; tools_used?: string[] }
+interface Frame { type: "status" | "delta" | "done" | "error"; text?: string; label?: string; stage?: string; message?: string; declined?: boolean; tools_used?: string[]; compressed?: boolean }
 
 const THREAD_KEY = "arena-chat-thread";
 const newId = () => (typeof crypto !== "undefined" && "randomUUID" in crypto ? crypto.randomUUID() : `t${Date.now()}${Math.random().toString(36).slice(2, 10)}`);
@@ -20,6 +20,7 @@ export function ChatDock() {
   const [busy, setBusy] = useState(false);
   const [status, setStatus] = useState<string | null>(null);
   const [page, setPage] = useState(getScreen().page);
+  const [summary, setSummary] = useState<string | null>(null);
   const [unavailable, setUnavailable] = useState<string | null>(null);
   const listRef = useRef<HTMLDivElement>(null);
   const abortRef = useRef<AbortController | null>(null);
@@ -39,6 +40,7 @@ export function ChatDock() {
     if (!open || !thread || msgs.length) return;
     fetch(`${API}/chat/${thread}/history`).then((r) => r.ok ? r.json() : null).then((d) => {
       if (d?.messages) setMsgs(d.messages as Msg[]);
+      if (d?.summary) setSummary(d.summary as string);
     }).catch(() => { /* offline */ });
   }, [open, thread]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -80,7 +82,10 @@ export function ChatDock() {
           const f = JSON.parse(line.slice(6)) as Frame;
           if (f.type === "status") { setStatus(f.label ?? null); if (f.stage === "tool" && f.label) tools.push(f.label); }
           else if (f.type === "delta") { acc += f.text ?? ""; setStatus(null); setMsgs((m) => replaceLast(m, { role: "assistant", content: acc, pending: true, tools })); }
-          else if (f.type === "done") { setMsgs((m) => replaceLast(m, { role: "assistant", content: f.message || acc, declined: f.declined, tools })); }
+          else if (f.type === "done") {
+            setMsgs((m) => replaceLast(m, { role: "assistant", content: f.message || acc, declined: f.declined, tools }));
+            if (f.compressed && !summary) setSummary("Earlier turns have been condensed into a short memory note so long chats stay fast.");
+          }
           else if (f.type === "error") { setMsgs((m) => replaceLast(m, { role: "assistant", content: f.message ?? "Something went wrong.", declined: true })); }
         }
       }
@@ -98,7 +103,7 @@ export function ChatDock() {
     if (thread) fetch(`${API}/chat/${thread}`, { method: "DELETE" }).catch(() => { /* ignore */ });
     const id = newId();
     try { localStorage.setItem(THREAD_KEY, id); } catch { /* ignore */ }
-    setThread(id); setMsgs([]); setStatus(null); setBusy(false);
+    setThread(id); setMsgs([]); setSummary(null); setStatus(null); setBusy(false);
   }
 
   const suggestions = SUGGESTIONS[page] ?? SUGGESTIONS.unknown;
@@ -131,6 +136,12 @@ export function ChatDock() {
 
           <div ref={listRef} style={{ overflowY: "auto", padding: 16, display: "grid", gap: 12, alignContent: "start" }}>
             {unavailable && <Bubble role="assistant" declined>{unavailable}</Bubble>}
+            {summary && (
+              <details style={{ fontSize: 12, color: "var(--text-muted)", padding: "8px 10px", borderRadius: 10, background: "var(--card2)" }}>
+                <summary style={{ cursor: "pointer", fontWeight: 700 }}>Earlier conversation condensed into memory</summary>
+                <div style={{ marginTop: 6, lineHeight: 1.5, color: "var(--text-2)" }}>{summary}</div>
+              </details>
+            )}
             {msgs.length === 0 && !unavailable && (
               <div style={{ display: "grid", gap: 8 }}>
                 <div style={{ fontSize: 13, color: "var(--text-2)", lineHeight: 1.5 }}>

@@ -15,6 +15,7 @@ from __future__ import annotations
 import os
 from typing import Any, Type
 
+import httpx
 from langchain_openai import ChatOpenAI
 from pydantic import BaseModel
 
@@ -35,17 +36,19 @@ def chat(
     model: str | None = None,
     temperature: float | None = None,
     max_tokens: int | None = None,
+    max_retries: int = 2,
+    read_timeout: float = 60.0,
     **kwargs: Any,
 ) -> ChatOpenAI:
-    """A plain chat model bound to the gateway."""
+    """A plain chat model bound to the gateway. Connect failures surface in 5 s, not 10 s+."""
     return ChatOpenAI(
         model=model or settings.LLM_MODEL,
         api_key=settings.AICREDITS_API_KEY or "missing",
         base_url=settings.AICREDITS_BASE_URL,
         temperature=settings.LLM_TEMPERATURE if temperature is None else temperature,
         max_tokens=max_tokens,
-        timeout=60,
-        max_retries=2,
+        timeout=httpx.Timeout(read_timeout, connect=5.0),
+        max_retries=max_retries,
         **kwargs,
     )
 
@@ -64,7 +67,7 @@ def structured(
     lacks strict JSON-schema support.
     """
     method = method or settings.LLM_STRUCTURED_METHOD
-    llm = chat(model=model, **kwargs)
+    llm = chat(model=model, **kwargs)   # kwargs may carry max_retries / read_timeout
     opts: dict[str, Any] = {"method": method}
     if method == "json_schema":
         opts["strict"] = True

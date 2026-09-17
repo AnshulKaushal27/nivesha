@@ -524,7 +524,24 @@ so "why is this one ranked 78" resolves without a lookup. Tools:
 with `PostgresSaver` (SQLite saver when `DATABASE_URL` is SQLite); the browser
 keeps its thread id in localStorage and "New chat" deletes the thread.
 Streaming is SSE (`status` / `delta` / `done` / `error` frames). Rate limit
-12 messages/min/IP. Every run is a LangSmith trace named `chat.assistant`
+12 messages/min/IP.
+
+**Memory compression.** A `compress` node runs between the guard and the
+agent. Once a thread has `CHAT_COMPRESS_AFTER` messages (18) or
+`CHAT_COMPRESS_CHARS` characters (20k), the light model folds every turn
+except the last `CHAT_KEEP_RECENT` (8) into a ≤180-word memory note stored in
+state as `summary`; the folded messages are deleted from the checkpoint with
+`RemoveMessage`. The cut always lands on a Human turn so a tool call is never
+separated from its result. The agent sees the note in its system prompt, so
+the tokens per call stay bounded however long the chat runs. The dock shows a
+collapsible "earlier conversation condensed" note.
+
+**Gateway resilience.** Connect timeout 5 s, one SDK retry, one graph-level
+retry with backoff, then a 30-second circuit breaker: while it is open, guard
+and agent skip the network and Voxa answers at once with "the AI service
+didn't respond just now". That reply is tagged `transient` and is excluded
+from history, trimming and compression, so an outage never becomes part of
+the conversation's memory. Every run is a LangSmith trace named `chat.assistant`
 tagged with the thread id; the guard call carries the `guard` tag so it can be
 filtered.
 
