@@ -129,6 +129,50 @@ def rank_movers(days: int = Query(20, ge=1, le=120), limit: int = Query(6, ge=1,
             "risers": list(reversed(moves[-limit:])) if moves else [], "fallers": moves[:limit]}
 
 
+@router.get("/bands-track")
+def bands_track(days: int = Query(20, ge=5, le=120), db: Session = Depends(get_db)):
+    """
+    Did the ranking hold up? Take each band as it stood `days` trading days ago and
+    index an equal-weight basket of its stocks from then to now, against all stocks.
+    """
+    from database import DailyBar
+    on = _latest_date(db)
+    if on is None:
+        return {"date": None, "compare_date": None, "series": [], "summary": []}
+    prev_date = _date_n_back(db, on, days)
+    if prev_date is None:
+        return {"date": str(on), "compare_date": None, "series": [], "summary": []}
+    then = db.execute(select(FactorScore.ticker, FactorScore.band).where(FactorScore.date == prev_date, FactorScore.eligible == 1)).all()
+    band_of = {t: b for t, b in then}
+    tickers = list(band_of)
+    rows = db.execute(select(DailyBar.date, DailyBar.ticker, DailyBar.close)
+                      .where(DailyBar.date >= prev_date, DailyBar.date <= on, DailyBar.ticker.in_(tickers)).order_by(DailyBar.date)).all()
+    by_date: dict = {}
+    for d, t, c in rows:
+        by_date.setdefault(d, {})[t] = c
+    base = by_date.get(prev_date, {})
+    bands = ["Strong", "Good", "Neutral", "Weak"]
+    series = []
+    for d in sorted(by_date):
+        day = by_date[d]
+        point = {"date": str(d)}
+        for b in bands + ["All"]:
+            rel = [day[t] / base[t] for t in day if t in base and base[t] and (b == "All" or band_of.get(t) == b)]
+            point[b] = round(100 * sum(rel) / len(rel), 2) if rel else None
+        series.append(point)
+    last = series[-1] if series else {}
+    summary = []
+    for b in bands:
+        n = sum(1 for t in band_of if band_of[t] == b)
+        v = last.get(b)
+        summary.append({"band": b, "n": n, "change_pct": None if v is None else round(v - 100, 2)})
+    market = None if not last or last.get("All") is None else round(last["All"] - 100, 2)
+    strong, weak = next((s["change_pct"] for s in summary if s["band"] == "Strong"), None), next((s["change_pct"] for s in summary if s["band"] == "Weak"), None)
+    verdict = None if strong is None or weak is None else ("held up" if strong > weak else "did not hold up")
+    return {"date": str(on), "compare_date": str(prev_date), "days": days, "series": series, "summary": summary,
+            "market_change_pct": market, "verdict": verdict, "spread_pct": None if strong is None or weak is None else round(strong - weak, 2)}
+
+
 @router.get("/dates")
 def rank_dates(limit: int = Query(30, ge=1, le=500), db: Session = Depends(get_db)):
     rows = db.execute(select(FactorScore.date).distinct().order_by(FactorScore.date.desc()).limit(limit)).scalars().all()

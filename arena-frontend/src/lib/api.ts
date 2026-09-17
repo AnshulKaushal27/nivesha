@@ -30,6 +30,18 @@ export interface Mover {
   band: Band; close: number; price_change_pct: number | null;
 }
 export interface Movers { date: string | null; compare_date: string | null; days?: number; risers: Mover[]; fallers: Mover[] }
+export interface BandsTrack {
+  date: string | null; compare_date: string | null; days?: number;
+  series: ({ date: string } & Record<string, number | string | null>)[];
+  summary: { band: string; n: number; change_pct: number | null }[];
+  market_change_pct?: number | null; verdict?: string | null; spread_pct?: number | null;
+}
+export interface BatchTrack {
+  prediction_date: string | null; horizon_days?: number; days_elapsed?: number; n_stocks?: number; decile_size?: number;
+  series: { date: string; top: number | null; bottom: number | null; market: number | null }[];
+  buckets: { bucket: string; n: number; avg_move_pct: number | null; beat_market_pct: number | null }[];
+  market_move_pct?: number | null; top_move_pct?: number | null; bottom_move_pct?: number | null; verdict?: string;
+}
 
 export interface LiveScore {
   run_date: string; matured_on: string; horizon: number; n: number; auc: number | null; accuracy: number;
@@ -185,6 +197,8 @@ export const api = {
   },
   rankSectors: () => get<{ date: string | null; sectors: SectorRow[] }>("/rank/sectors"),
   rankMovers: (days = 20, limit = 6) => get<Movers>(`/rank/movers?days=${days}&limit=${limit}`),
+  rankBandsTrack: (days = 20) => get<BandsTrack>(`/rank/bands-track?days=${days}`),
+  predictBatchTrack: () => get<BatchTrack>("/predict/track"),
   rankDetail: (ticker: string, history = 60) => get<RankDetail>(`/rank/${encodeURIComponent(ticker)}?history=${history}`),
   rankExplain: (ticker: string) => get<Explanation>(`/rank/${encodeURIComponent(ticker)}/explain`),
   health: () => get<{ status: string; version: string }>("/health"),

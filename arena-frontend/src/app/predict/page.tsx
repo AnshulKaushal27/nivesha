@@ -2,10 +2,10 @@
 
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
-import { api, type PredictionItem, type PredictLive, type PredictRun } from "@/lib/api";
+import { api, type BatchTrack, type PredictionItem, type PredictLive, type PredictRun } from "@/lib/api";
 import { fmtDate, fmtINR, fmtPct } from "@/lib/signals";
 import { Button, EmptyState, LoadMore, PageHeader, Pill, Section, StatTile, Tabs } from "@/components/ui";
-import { BaseRateChart, CalibrationChart, FoldsChart, LiveScoreChart, OddsHistogram, ProfileChart, SectorBars } from "@/components/charts";
+import { BaseRateChart, BucketMoveChart, CalibrationChart, FoldsChart, IndexedLines, LiveScoreChart, OddsHistogram, ProfileChart, SectorBars } from "@/components/charts";
 import { useScreen } from "@/lib/screen";
 
 const PAGE = 20;
@@ -15,6 +15,7 @@ const TAB_LABEL: Record<Tab, string> = { odds: "Best odds now", types: "What typ
 export default function PredictPage() {
   const [run, setRun] = useState<PredictRun | null>(null);
   const [live, setLive] = useState<PredictLive | null>(null);
+  const [batch, setBatch] = useState<BatchTrack | null>(null);
   const [items, setItems] = useState<PredictionItem[]>([]);
   const [tab, setTab] = useState<Tab>("odds");
   const [shown, setShown] = useState(PAGE);
@@ -31,6 +32,7 @@ export default function PredictPage() {
       .catch((e: Error) => setError(e.message))
       .finally(() => setLoading(false));
     api.predictLive().then(setLive).catch(() => setLive(null));
+    api.predictBatchTrack().then(setBatch).catch(() => setBatch(null));
   }
   useEffect(load, []);
   useEffect(() => { setShown(PAGE); }, [sector, q]);
@@ -103,6 +105,30 @@ export default function PredictPage() {
             { id: "history", label: "20-year base rates", icon: "◷" },
             { id: "model", label: "How it was tested", icon: "⚙" },
           ]} />
+
+          {tab === "odds" && batch && batch.prediction_date && (
+            <Section className="fade-up-2" title="Predictions vs what has happened so far"
+              sub={`Since the predictions were made on ${fmtDate(batch.prediction_date)}: the ${batch.decile_size} stocks with the best odds, the ${batch.decile_size} with the worst, and all ${batch.n_stocks} together. Day ${batch.days_elapsed} of ${batch.horizon_days}.`}
+              action={<Pill tone={batch.verdict === "on track" ? "strong" : batch.verdict === "behind" ? "weak" : "neutral"}>{batch.verdict}</Pill>}>
+              <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 3fr) minmax(260px, 2fr)", gap: 20, alignItems: "start" }}>
+                <div>
+                  <IndexedLines series={batch.series} keys={[
+                    { key: "top", label: "Best odds (top 10%)", color: "var(--strong)" },
+                    { key: "bottom", label: "Worst odds (bottom 10%)", color: "var(--weak)" },
+                    { key: "market", label: "All predicted stocks (market)", color: "var(--text-muted)", dashed: true, width: 1.5 },
+                  ]} height={230} />
+                  {batch.days_elapsed === 0 && <div style={{ fontSize: 12.5, color: "var(--text-muted)", marginTop: 6 }}>The batch was created today; the lines separate from tomorrow's close onwards and the horizon closes in {batch.horizon_days} trading days.</div>}
+                </div>
+                <div>
+                  <div className="eyebrow" style={{ marginBottom: 6 }}>Average move so far, by odds bucket</div>
+                  <BucketMoveChart buckets={batch.buckets} market={batch.market_move_pct ?? null} />
+                  <div style={{ fontSize: 12.5, color: "var(--text-2)", lineHeight: 1.5, marginTop: 4 }}>
+                    Best odds <b style={{ color: (batch.top_move_pct ?? 0) >= (batch.market_move_pct ?? 0) ? "var(--strong-ink)" : "var(--weak-ink)" }}>{fmtPct(batch.top_move_pct)}</b> · worst odds <b>{fmtPct(batch.bottom_move_pct)}</b> · market <b>{fmtPct(batch.market_move_pct)}</b>. If the model is right, the green bar should sit above the market line more often than not.
+                  </div>
+                </div>
+              </div>
+            </Section>
+          )}
 
           {tab === "odds" && (
             <Section title="Stocks with the best odds of beating the market" sub={`Next ${run.horizon_days} trading days · odds from the model · Strength Score shown for comparison`}

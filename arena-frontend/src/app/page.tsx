@@ -2,12 +2,12 @@
 
 import Link from "next/link";
 import { Fragment, useEffect, useMemo, useState } from "react";
-import { api, type Band, type Movers, type RankRow, type SectorRow } from "@/lib/api";
+import { api, type Band, type BandsTrack, type Movers, type RankRow, type SectorRow } from "@/lib/api";
 import { BAND, fmtDate, fmtINR, fmtPct } from "@/lib/signals";
 import { RankRing } from "@/components/RankRing";
 import { FactorBars } from "@/components/FactorBars";
-import { LoadMore, PageHeader, Section } from "@/components/ui";
-import { BandDonut, FactorStrip, MoversChart, SectorBars } from "@/components/charts";
+import { LoadMore, PageHeader, Pill, Section } from "@/components/ui";
+import { BandDonut, FactorStrip, IndexedLines, MoversChart, SectorBars } from "@/components/charts";
 import { useScreen } from "@/lib/screen";
 
 const BANDS: Band[] = ["Strong", "Good", "Neutral", "Weak"];
@@ -19,6 +19,7 @@ export default function RankPage() {
   const [date, setDate] = useState<string | null>(null);
   const [compareDate, setCompareDate] = useState<string | null>(null);
   const [movers, setMovers] = useState<Movers | null>(null);
+  const [track, setTrack] = useState<BandsTrack | null>(null);
   const [sectors, setSectors] = useState<SectorRow[]>([]);
   const [sector, setSector] = useState("");
   const [band, setBand] = useState<Band | "">("");
@@ -35,6 +36,7 @@ export default function RankPage() {
       .then(([r, s, m]) => { setItems(r.items); setUniverse(r.universe ?? r.items.length); setDate(r.date); setCompareDate(r.compare_date ?? null); setSectors(s.sectors); setMovers(m); setError(null); })
       .catch((e: Error) => setError(e.message))
       .finally(() => setLoading(false));
+    api.rankBandsTrack(20).then(setTrack).catch(() => setTrack(null));
   }, []);
 
   const filtered = useMemo(() => items.filter((i) =>
@@ -59,8 +61,9 @@ export default function RankPage() {
         rank_change_1m: i.rank_change_20d, price_change_1m_pct: i.price_change_20d_pct, model_odds_pct: i.prob_up == null ? null : Math.round(i.prob_up * 100), factor_contributions: i.contributions })),
       showing: Math.min(shown, filtered.length), of: filtered.length,
       biggest_movers_1m: movers ? { risers: movers.risers.map((m) => `${m.symbol} ${m.from_rank}→${m.to_rank}`), fallers: movers.fallers.map((m) => `${m.symbol} ${m.from_rank}→${m.to_rank}`) } : null,
+      last_month_ranking_check: track && track.compare_date ? { since: track.compare_date, verdict: track.verdict, market_change_pct: track.market_change_pct, by_band: track.summary } : null,
     },
-  }, [loading, date, items.length, sector, band, q, shown, filtered.length, movers]);
+  }, [loading, date, items.length, sector, band, q, shown, filtered.length, movers, track]);
 
   if (error) return <ErrorState message={error} />;
 
@@ -131,6 +134,36 @@ export default function RankPage() {
             </Link>
           ))}
         </section>
+      )}
+
+      {/* Prediction vs reality: last month's bands */}
+      {!loading && track && track.compare_date && track.series.length > 0 && (
+        <Section className="fade-up-3" title="Did last month's ranking hold up?"
+          sub={`Each line is an equal-weight basket of the stocks in that band as ranked on ${fmtDate(track.compare_date)}, followed to today. If the ranking works, Strong stays above Weak.`}
+          action={track.verdict && <Pill tone={track.verdict === "held up" ? "strong" : "weak"}>{track.verdict}{track.spread_pct != null && ` · Strong − Weak ${fmtPct(track.spread_pct)}`}</Pill>}>
+          <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 2fr) minmax(220px, 1fr)", gap: 20, alignItems: "center" }}>
+            <IndexedLines series={track.series} keys={[
+              { key: "Strong", label: "Strong basket", color: "var(--strong)" },
+              { key: "Good", label: "Good basket", color: "var(--good)" },
+              { key: "Neutral", label: "Neutral basket", color: "var(--neutral)" },
+              { key: "Weak", label: "Weak basket", color: "var(--weak)" },
+              { key: "All", label: "All stocks (market)", color: "var(--text-muted)", dashed: true, width: 1.5 },
+            ]} />
+            <div style={{ display: "grid", gap: 8 }}>
+              {track.summary.map((s) => {
+                const b = BAND[s.band as Band];
+                return (
+                  <div key={s.band} style={{ display: "grid", gridTemplateColumns: "10px 1fr auto", alignItems: "center", gap: 10, padding: "9px 12px", borderRadius: 12, background: b.soft }}>
+                    <span className="chip-dot" style={{ background: b.fill, width: 10, height: 10 }} />
+                    <span style={{ fontWeight: 700, color: b.ink }}>{s.band} <span style={{ fontWeight: 500, color: "var(--text-muted)", fontSize: 12 }}>· {s.n} stocks</span></span>
+                    <b className="tnum" style={{ color: (s.change_pct ?? 0) >= (track.market_change_pct ?? 0) ? "var(--strong-ink)" : "var(--weak-ink)" }}>{fmtPct(s.change_pct)}</b>
+                  </div>
+                );
+              })}
+              <div style={{ fontSize: 12.5, color: "var(--text-muted)", padding: "4px 12px" }}>Market (all stocks): <b className="tnum" style={{ color: "var(--text)" }}>{fmtPct(track.market_change_pct)}</b> over the same {track.days} trading days.</div>
+            </div>
+          </div>
+        </Section>
       )}
 
       {/* Filters */}

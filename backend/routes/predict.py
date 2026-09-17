@@ -151,6 +151,57 @@ def live(db: Session = Depends(get_db)):
     }
 
 
+@router.get("/track")
+def batch_track(db: Session = Depends(get_db)):
+    """
+    The current prediction batch vs reality: an equal-weight basket of the top-10%-odds
+    stocks, the bottom 10%, and all predicted stocks, indexed to 100 at the prediction
+    date; plus average move per odds bucket so far.
+    """
+    run = _latest_run(db)
+    if run is None:
+        return {"prediction_date": None, "series": [], "buckets": []}
+    preds = db.execute(select(Prediction.ticker, Prediction.prob_up).where(Prediction.date == run.as_of, Prediction.horizon == run.meta.get("horizon_days", HORIZON))).all()
+    if not preds:
+        return {"prediction_date": str(run.as_of), "series": [], "buckets": []}
+    probs = dict(preds)
+    ordered = sorted(probs, key=lambda t: probs[t])
+    k = max(5, len(ordered) // 10)
+    bottom, top = set(ordered[:k]), set(ordered[-k:])
+    rows = db.execute(select(DailyBar.date, DailyBar.ticker, DailyBar.close)
+                      .where(DailyBar.date >= run.as_of, DailyBar.ticker.in_(list(probs))).order_by(DailyBar.date)).all()
+    by_date: dict = {}
+    for d, t, c in rows:
+        by_date.setdefault(d, {})[t] = c
+    base = by_date.get(run.as_of, {})
+    series = []
+    for d in sorted(by_date):
+        day = by_date[d]
+        def idx(group):
+            rel = [day[t] / base[t] for t in day if t in base and base[t] and (group is None or t in group)]
+            return round(100 * sum(rel) / len(rel), 2) if rel else None
+        series.append({"date": str(d), "top": idx(top), "bottom": idx(bottom), "market": idx(None)})
+    latest_day = by_date[max(by_date)] if by_date else {}
+    moves = {t: (latest_day[t] / base[t] - 1) * 100 for t in probs if t in base and t in latest_day and base[t]}
+    med = None
+    if moves:
+        v = sorted(moves.values()); med = v[len(v) // 2]
+    edges = [(0.0, 0.4, "under 40%"), (0.4, 0.5, "40–50%"), (0.5, 0.6, "50–60%"), (0.6, 1.01, "60% and up")]
+    buckets = []
+    for lo, hi, label in edges:
+        ts = [t for t in probs if lo <= probs[t] < hi]
+        mv = [moves[t] for t in ts if t in moves]
+        buckets.append({"bucket": label, "n": len(ts), "avg_move_pct": round(sum(mv) / len(mv), 2) if mv else None,
+                        "beat_market_pct": round(100 * sum(1 for m in mv if med is not None and m > med) / len(mv), 0) if mv and med is not None else None})
+    last = series[-1] if series else {}
+    elapsed = max(0, len(series) - 1)
+    return {"prediction_date": str(run.as_of), "horizon_days": run.meta.get("horizon_days", HORIZON), "days_elapsed": elapsed,
+            "n_stocks": len(probs), "decile_size": k, "series": series, "buckets": buckets, "market_move_pct": None if med is None else round(med, 2),
+            "top_move_pct": None if not last or last.get("top") is None else round(last["top"] - 100, 2),
+            "bottom_move_pct": None if not last or last.get("bottom") is None else round(last["bottom"] - 100, 2),
+            "verdict": "too early" if elapsed < 3 else ("on track" if last.get("top", 0) > last.get("market", 0) else "behind")}
+
+
 @router.get("/{ticker}")
 def one(ticker: str, db: Session = Depends(get_db)):
     ticker = ticker.upper() if ticker.endswith(".NS") else f"{ticker.upper()}.NS"

@@ -302,6 +302,55 @@ export function TrackChart({ series, color = "var(--series-1)" }: { series: { da
   );
 }
 
+/* ── Indexed lines: several baskets vs 100 at the start date ─────────── */
+export function IndexedLines({ series, keys, height = 240 }: {
+  series: Record<string, unknown>[];
+  keys: { key: string; label: string; color: string; dashed?: boolean; width?: number }[];
+  height?: number;
+}) {
+  if (!series.length) return <div style={{ color: "var(--text-muted)", fontSize: 13 }}>No prices yet.</div>;
+  const vals = series.flatMap((s) => keys.map((k) => s[k.key] as number | null)).filter((v): v is number => v != null);
+  const lo = Math.floor(Math.min(100, ...vals) - 1), hi = Math.ceil(Math.max(100, ...vals) + 1);
+  const label = Object.fromEntries(keys.map((k) => [k.key, k.label]));
+  return (
+    <Box h={height}>
+      <LineChart data={series} margin={{ top: 8, right: 12, bottom: 0, left: -12 }}>
+        <CartesianGrid vertical={false} stroke="var(--grid)" />
+        <XAxis dataKey="date" tickFormatter={(d: string) => fmtDate(d).slice(0, 6)} tick={AXIS} axisLine={{ stroke: "var(--axis)" }} tickLine={false} minTickGap={36} />
+        <YAxis domain={[lo, hi]} tick={AXIS} axisLine={false} tickLine={false} tickFormatter={(v: number) => `${v >= 100 ? "+" : ""}${(v - 100).toFixed(0)}%`} />
+        <ReferenceLine y={100} stroke="var(--axis)" strokeDasharray="4 4" />
+        <Tooltip {...TIP_PROPS} cursor={{ stroke: "var(--axis)", strokeDasharray: "3 3" }} labelFormatter={(d) => fmtDate(String(d))}
+                 formatter={(v: number, n: string) => [`${(v - 100) >= 0 ? "+" : ""}${(v - 100).toFixed(2)}%`, label[n] ?? n]} />
+        <Legend formatter={(v: string) => <span style={{ color: "var(--text-2)", fontSize: 12 }}>{label[v] ?? v}</span>} />
+        {keys.map((k) => (
+          <Line key={k.key} dataKey={k.key} stroke={k.color} strokeWidth={k.width ?? 2} strokeDasharray={k.dashed ? "5 4" : undefined}
+                dot={series.length < 3 ? { r: 4, strokeWidth: 2, stroke: "var(--card)" } : false} activeDot={{ r: 5, stroke: "var(--card)", strokeWidth: 2 }} connectNulls isAnimationActive={false} />
+        ))}
+      </LineChart>
+    </Box>
+  );
+}
+
+/* ── Odds buckets vs actual move so far ─────────────────────────────── */
+export function BucketMoveChart({ buckets, market }: { buckets: { bucket: string; n: number; avg_move_pct: number | null }[]; market: number | null }) {
+  const data = buckets.map((b) => ({ ...b, name: b.bucket, v: b.avg_move_pct ?? 0 }));
+  return (
+    <Box h={200}>
+      <BarChart data={data} margin={{ top: 16, right: 8, bottom: 0, left: -12 }}>
+        <CartesianGrid vertical={false} stroke="var(--grid)" />
+        <XAxis dataKey="name" tick={AXIS} axisLine={{ stroke: "var(--axis)" }} tickLine={false} />
+        <YAxis tick={AXIS} axisLine={false} tickLine={false} tickFormatter={(v: number) => `${v > 0 ? "+" : ""}${v}%`} />
+        <ReferenceLine y={0} stroke="var(--axis)" />
+        {market != null && <ReferenceLine y={market} stroke="var(--text-muted)" strokeDasharray="4 4" label={{ value: "market", position: "insideTopRight", fontSize: 10, fill: "var(--text-muted)" }} />}
+        <Tooltip {...TIP_PROPS} cursor={{ fill: "var(--card2)" }} formatter={(v: number, _n, p) => [`${v >= 0 ? "+" : ""}${v.toFixed(2)}% · ${p.payload.n} stocks`, `odds ${p.payload.name}`]} />
+        <Bar dataKey="v" radius={[4, 4, 0, 0]} isAnimationActive={false} label={{ position: "top", fontSize: 10.5, fill: "var(--text-muted)", formatter: (v: number) => `${v >= 0 ? "+" : ""}${v.toFixed(1)}%` }}>
+          {data.map((d, i) => <Cell key={d.name} fill={i === data.length - 1 ? "var(--strong)" : i === 0 ? "var(--weak)" : "var(--good)"} />)}
+        </Bar>
+      </BarChart>
+    </Box>
+  );
+}
+
 /* ── Allocation donut for one Arena manager ─────────────────────────── */
 export function AllocationDonut({ holdings, color, cash }: { holdings: { ticker: string; allocation_percent: number }[]; color: string; cash?: number }) {
   const sorted = [...holdings].sort((a, b) => b.allocation_percent - a.allocation_percent);
