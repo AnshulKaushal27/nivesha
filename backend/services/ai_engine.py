@@ -27,7 +27,7 @@ SUPPORTED_MODELS: Dict[str, str] = {
     "gpt":      "gpt-4o-mini",
     "gemini":   "gemini-2.5-flash-lite-preview-09-2025",
     "mistral":  "mistralai/voxtral-small-24b-2507",
-    "deepseek": "deepseek/deepseek-v4-flash",
+    "deepseek": "deepseek/deepseek-v3.2",     # gateway has no v4 id; verified via GET /models 2026-09-17
 }
 
 # Each model gets a distinct investment philosophy in its system prompt

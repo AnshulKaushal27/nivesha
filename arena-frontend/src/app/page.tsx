@@ -6,8 +6,10 @@ import { api, type Band, type RankItem, type SectorRow } from "@/lib/api";
 import { BAND, fmtDate, fmtINR } from "@/lib/signals";
 import { BandChip, RankRing } from "@/components/RankRing";
 import { FactorBars } from "@/components/FactorBars";
+import { LoadMore, PageHeader } from "@/components/ui";
 
 const BANDS: Band[] = ["Strong", "Good", "Neutral", "Weak"];
+const PAGE = 20;
 
 export default function RankPage() {
   const [items, setItems] = useState<RankItem[]>([]);
@@ -16,8 +18,11 @@ export default function RankPage() {
   const [sector, setSector] = useState("");
   const [band, setBand] = useState<Band | "">("");
   const [q, setQ] = useState("");
+  const [shown, setShown] = useState(PAGE);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => { setShown(PAGE); }, [sector, band, q]);
 
   useEffect(() => {
     setLoading(true);
@@ -44,22 +49,12 @@ export default function RankPage() {
 
   return (
     <div style={{ display: "grid", gap: 24 }}>
-      {/* Hero */}
-      <section className="fade-up" style={{ display: "flex", flexWrap: "wrap", alignItems: "flex-end", justifyContent: "space-between", gap: 16 }}>
-        <div>
-          <div className="eyebrow">Buy Rank · NIFTY 500</div>
-          <h1 style={{ fontFamily: "var(--font-display)", fontWeight: 800, fontSize: 34, letterSpacing: "-0.02em", marginTop: 6 }}>
-            Which stocks look strongest today?
-          </h1>
-          <p style={{ color: "var(--text-2)", marginTop: 8, maxWidth: 640, lineHeight: 1.55 }}>
-            Every stock gets a score from 1 to 100 based on trend, momentum, calmness and liquidity.
-            Higher is stronger. It is a ranking, not advice.
-          </p>
-        </div>
-        <div style={{ fontSize: 13, color: "var(--text-muted)" }}>
-          {loading ? <span className="skeleton" style={{ display: "inline-block", width: 140, height: 16 }} /> : <>As of <b style={{ color: "var(--text)" }}>{fmtDate(date)}</b> · {items.length} stocks ranked</>}
-        </div>
-      </section>
+      <PageHeader
+        eyebrow="Buy Rank · NIFTY 500"
+        title="Which stocks look strongest today?"
+        blurb="Every stock gets a score from 1 to 100 based on trend, momentum, calmness and liquidity. Higher is stronger. It is a ranking, not advice."
+        aside={loading ? <span className="skeleton" style={{ display: "inline-block", width: 140, height: 16 }} /> : <>As of <b style={{ color: "var(--text)" }}>{fmtDate(date)}</b> · {items.length} stocks ranked</>}
+      />
 
       {/* Band summary — colour + word + count */}
       <section className="fade-up-1" style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: 12 }}>
@@ -136,7 +131,7 @@ export default function RankPage() {
               {loading && Array.from({ length: 10 }).map((_, i) => (
                 <tr key={i}><td colSpan={7} style={{ padding: 10 }}><div className="skeleton" style={{ height: 34 }} /></td></tr>
               ))}
-              {!loading && filtered.map((i, n) => {
+              {!loading && filtered.slice(0, shown).map((i, n) => {
                 const s = BAND[i.band];
                 const drivers = Object.entries(i.contributions ?? {}).filter(([, v]) => v != null).sort((a, b) => (b[1] ?? 0) - (a[1] ?? 0));
                 const best = drivers[0]?.[0]; const worst = drivers[drivers.length - 1]?.[0];
@@ -174,6 +169,7 @@ export default function RankPage() {
             </tbody>
           </table>
         </div>
+        {!loading && <LoadMore shown={Math.min(shown, filtered.length)} total={filtered.length} step={PAGE} onMore={() => setShown((s) => s + PAGE)} />}
       </section>
     </div>
   );

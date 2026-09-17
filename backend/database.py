@@ -177,6 +177,38 @@ class RankExplanation(Base):
     created_at    = Column(DateTime, default=datetime.utcnow)
 
 
+class ModelRun(Base):
+    """One training/evaluation run of a research model, with its full report as JSON."""
+    __tablename__ = "model_runs"
+    __table_args__ = (Index("ix_model_runs_kind_date", "kind", "as_of"),)
+
+    id         = Column(Integer, primary_key=True)
+    kind       = Column(String(40), nullable=False)         # "beat_market_63d"
+    as_of      = Column(Date, nullable=False)
+    meta       = Column(JSONType, nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+
+class Prediction(Base):
+    """Per-stock model output for one date and horizon."""
+    __tablename__ = "predictions"
+    __table_args__ = (
+        UniqueConstraint("ticker", "date", "horizon", name="uq_prediction"),
+        Index("ix_predictions_date_prob", "date", "prob_up"),
+    )
+
+    id         = Column(Integer, primary_key=True)
+    ticker     = Column(String(24), nullable=False, index=True)
+    date       = Column(Date, nullable=False)
+    horizon    = Column(Integer, nullable=False)             # trading days
+    prob_up    = Column(Float, nullable=False)               # P(beats the market median over horizon)
+    pct_rank   = Column(Integer)                             # 1–100 among peers that day
+    sector     = Column(String(60))
+    close      = Column(Float)
+    features   = Column(JSONType)                            # the z-scores the model saw
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+
 class IngestRun(Base):
     """Audit trail for every batch job so a bad day can be traced."""
     __tablename__ = "ingest_runs"

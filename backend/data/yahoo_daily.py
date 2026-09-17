@@ -24,11 +24,14 @@ logger = logging.getLogger(__name__)
 _BATCH = 50
 
 
-def ingest_daily_yahoo(db: Session, tickers: list[str], lookback_days: int | None = None) -> tuple[int, list[str]]:
+def ingest_daily_yahoo(
+    db: Session, tickers: list[str], lookback_days: int | None = None, full: bool = False,
+) -> tuple[int, list[str]]:
+    """`full=True` re-fetches `lookback_days` for every ticker (existing rows are skipped on conflict)."""
     import yfinance as yf   # imported lazily: dev dependency
 
     lookback_days = lookback_days or settings.HISTORY_DAYS
-    last = last_bar_dates(db, tickers)
+    last = {} if full else last_bar_dates(db, tickers)
     today = date.today()
     earliest_needed = min(
         [(last[t] + timedelta(days=1)) if t in last else (today - timedelta(days=lookback_days)) for t in tickers],

@@ -28,6 +28,9 @@ def run_nightly(
     backfill: int = 0,
     limit: int | None = None,
     refresh_universe_first: bool = True,
+    lookback_days: int | None = None,
+    full: bool = False,
+    skip_rank: bool = False,
 ) -> dict:
     summary: dict = {"source": source}
 
@@ -45,13 +48,17 @@ def run_nightly(
         if limit:
             tickers = tickers[:limit]
         if source == "yahoo":
-            from data.yahoo_daily import ingest_daily_yahoo as ingest
+            from data.yahoo_daily import ingest_daily_yahoo
+            written, failed = ingest_daily_yahoo(db, tickers, lookback_days=lookback_days, full=full)
         else:
-            from data.upstox_daily import ingest_daily as ingest
-        written, failed = ingest(db, tickers)
+            from data.upstox_daily import ingest_daily
+            written, failed = ingest_daily(db, tickers, lookback_days=lookback_days)
         run.rows = written
         run.detail = f"{len(tickers)} tickers, {len(failed)} failed: {', '.join(failed[:20])}"
         summary.update(tickers=len(tickers), bars_written=written, failed=failed)
+
+    if skip_rank:
+        return summary
 
     with job_run("buyrank") as (db, run):
         run.rows = compute_and_store(db, backfill_days=backfill)
@@ -68,8 +75,12 @@ def main() -> None:
     p.add_argument("--backfill", type=int, default=0, help="extra trading days of ranks to store")
     p.add_argument("--limit", type=int, default=None, help="only the first N tickers")
     p.add_argument("--no-universe", action="store_true", help="skip the NSE constituent refresh")
+    p.add_argument("--lookback-days", type=int, default=None, help="history to fetch for new tickers (default HISTORY_DAYS)")
+    p.add_argument("--full", action="store_true", help="re-fetch --lookback-days for every ticker (yahoo only)")
+    p.add_argument("--skip-rank", action="store_true", help="ingest only")
     a = p.parse_args()
-    run_nightly(source=a.source, backfill=a.backfill, limit=a.limit, refresh_universe_first=not a.no_universe)
+    run_nightly(source=a.source, backfill=a.backfill, limit=a.limit, refresh_universe_first=not a.no_universe,
+                lookback_days=a.lookback_days, full=a.full, skip_rank=a.skip_rank)
 
 
 if __name__ == "__main__":

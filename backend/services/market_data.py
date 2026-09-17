@@ -549,6 +549,49 @@ def _indicators(ticker: str, df: pd.DataFrame) -> Optional[Dict]:
         return None
 
 
+# ── Database-backed source (no Upstox token needed) ────────────────────────
+
+def fetch_stock_data_from_db(db, tickers: List[str], days: int = 130) -> List[Dict]:
+    """
+    Same indicator dicts as `fetch_stock_data`, computed from `daily_bars`.
+    Used when no Upstox token is configured, or MARKET_DATA_SOURCE=db.
+    """
+    from datetime import timedelta as _td
+    from data.bars import load_bars
+
+    bars = load_bars(db, tickers=tickers, start=date.today() - _td(days=days))
+    results: List[Dict] = []
+    for ticker, g in bars.groupby("ticker"):
+        df = g.set_index("date")[["close", "volume"]].rename(columns={"close": "Close", "volume": "Volume"})
+        if len(df) >= 20:
+            ind = _indicators(ticker, df)
+            if ind:
+                results.append(ind)
+    logger.info("DB market data: %d/%d tickers with indicators", len(results), len(tickers))
+    return results
+
+
+def get_latest_prices_from_db(db, tickers: List[str]) -> Dict[str, float]:
+    """Last stored close per ticker — end-of-day valuation fallback."""
+    from sqlalchemy import func, select
+    from database import DailyBar
+
+    sub = (select(DailyBar.ticker, func.max(DailyBar.date).label("d"))
+           .where(DailyBar.ticker.in_(tickers)).group_by(DailyBar.ticker).subquery())
+    rows = db.execute(
+        select(DailyBar.ticker, DailyBar.close).join(sub, (DailyBar.ticker == sub.c.ticker) & (DailyBar.date == sub.c.d))
+    ).all()
+    return {t: float(c) for t, c in rows}
+
+
+def market_source() -> str:
+    """'upstox' when a token is present (unless overridden), otherwise 'db'."""
+    forced = getattr(settings, "MARKET_DATA_SOURCE", "auto")
+    if forced in ("upstox", "db"):
+        return forced
+    return "upstox" if settings.UPSTOX_ANALYTICS_TOKEN else "db"
+
+
 # ── Public API ─────────────────────────────────────────────────────────────
 
 def fetch_stock_data(tickers: List[str]) -> List[Dict]:

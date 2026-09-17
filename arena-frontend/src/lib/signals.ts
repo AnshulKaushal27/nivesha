@@ -31,6 +31,17 @@ export const FACTOR_LABEL: Record<FactorKey, { name: string; plain: string }> = 
 
 export const FACTOR_ORDER: FactorKey[] = ["mom_12_1", "mom_6_1", "trend", "low_vol", "liquidity", "vol_conf", "overheat"];
 
+/* AI Arena personas / models — fixed colour order, never cycled */
+export const MODEL: Record<string, { label: string; short: string; color: string; icon: string; style: string }> = {
+  gpt:      { label: "GPT-4o mini",      short: "GPT",      color: "var(--series-1)", icon: "⬡", style: "Quant & risk-adjusted" },
+  gemini:   { label: "Gemini 2.5 Flash", short: "Gemini",   color: "var(--series-2)", icon: "◈", style: "Aggressive growth" },
+  mistral:  { label: "Mistral Voxtral",  short: "Mistral",  color: "var(--series-3)", icon: "▲", style: "Conservative value" },
+  deepseek: { label: "DeepSeek V3.2",    short: "DeepSeek", color: "var(--series-7)", icon: "◎", style: "Pure TOPSIS" },
+};
+export const modelMeta = (m: string) => MODEL[m] ?? { label: m, short: m, color: "var(--series-8)", icon: "●", style: "" };
+
+export const RISK_TONE: Record<string, "good" | "neutral" | "weak"> = { conservative: "good", moderate: "neutral", aggressive: "weak" };
+
 export const fmtINR = (n: number | null | undefined, d = 2) =>
   n == null ? "—" : `₹${n.toLocaleString("en-IN", { minimumFractionDigits: d, maximumFractionDigits: d })}`;
 

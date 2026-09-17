@@ -45,7 +45,15 @@ def update_valuations(db: Session, target_date: Optional[date] = None) -> int:
     
     logger.info(f"🔍 Fetching prices for {len(all_tickers)} unique tickers: {all_tickers}")
     
-    prices: Dict[str, float] = get_latest_prices(all_tickers)
+    from services.market_data import get_latest_prices_from_db, market_source
+    prices: Dict[str, float] = {}
+    if market_source() == "upstox":
+        try:
+            prices = get_latest_prices(all_tickers)
+        except RuntimeError as exc:                      # expired token — fall back rather than fail
+            logger.warning("Upstox LTP unavailable (%s); using last stored closes", exc)
+    if not prices:
+        prices = get_latest_prices_from_db(db, all_tickers)
     
     # ⚠️  CHECK: Did we actually get prices?
     fetched_count = len(prices)

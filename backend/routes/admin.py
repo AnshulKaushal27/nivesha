@@ -33,6 +33,15 @@ async def simulate_and_save(db: Session = Depends(get_db)):
     }
 
 
+@router.post("/train-predictor")
+async def trigger_train_predictor():
+    """Retrain the beat-the-market model now (takes a minute or two)."""
+    import asyncio
+    from jobs.train_predictor import run as train
+    meta = await asyncio.to_thread(train)
+    return {"message": "Predictor trained", "as_of": meta["as_of"], "oos": meta["oos"]}
+
+
 @router.post("/update-valuations")
 def trigger_update_valuations(db: Session = Depends(get_db)):
     """Manually update today's portfolio valuations."""

@@ -111,9 +111,16 @@ async def morning_job():
     today = date.today()
 
     try:
-        # ① Market data
-        logger.info("Fetching NIFTY200 market data...")
-        stocks = fetch_stock_data(settings.NIFTY_200_TICKERS)
+        # ① Market data — Upstox when a token exists, otherwise from daily_bars
+        from data.universe import universe_tickers
+        from services.market_data import fetch_stock_data_from_db, market_source
+        tickers = universe_tickers(db)
+        src = market_source()
+        logger.info(f"Fetching market data for {len(tickers)} tickers via {src}...")
+        if src == "db":
+            stocks = await asyncio.to_thread(fetch_stock_data_from_db, db, tickers)
+        else:
+            stocks = await asyncio.to_thread(fetch_stock_data, tickers)
         if not stocks:
             logger.error("No stock data. Aborting morning job.")
             return {"error": "No market data"}
@@ -248,6 +255,17 @@ async def nightly_job():
         logger.error(f"Nightly job error: {exc}")
 
 
+async def predictor_job():
+    """Saturday 09:00 IST — retrain the beat-the-market model on full history."""
+    from jobs.train_predictor import run as train
+    logger.info("━━━ 🔮  Predictor training started ━━━")
+    try:
+        meta = await asyncio.to_thread(train)
+        logger.info(f"━━━ ✅  Predictor done — OOS {meta['oos']} ━━━")
+    except Exception as exc:
+        logger.error(f"Predictor job error: {exc}")
+
+
 async def closing_job():
     if not is_trading_day():
         logger.info(f"Skipping closing job — {date.today()} is not a trading day")
@@ -309,6 +327,15 @@ def setup_scheduler() -> AsyncIOScheduler:
         replace_existing=True,
         name="Nightly bars + Buy Rank",
         misfire_grace_time=3600,
+    )
+
+    scheduler.add_job(
+        predictor_job,
+        CronTrigger(hour=9, minute=0, day_of_week="sat", timezone=IST),
+        id="predictor_job",
+        replace_existing=True,
+        name="Weekly predictor retrain",
+        misfire_grace_time=6 * 3600,
     )
 
     return scheduler

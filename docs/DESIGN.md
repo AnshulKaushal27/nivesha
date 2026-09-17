@@ -284,6 +284,30 @@ labels, and the output is directly explainable ("large trades cluster at
 
 ---
 
+### 1.4b Predictions (added 2026-09-17, shipped with Phase 0)
+
+The user asked for a tab that says which *type* of stock tends to rise, from
+long history. The honest version is a probability model with its test results
+printed next to its output.
+
+- **Data**: up to 20 years of daily bars for today's NIFTY 500 members (Yahoo
+  in dev, Upstox in prod). Survivorship bias is real and is stated on the page.
+- **Target**: `P(stock beats the universe median over the next 63 trading days)`.
+- **Features**: the seven Buy Rank factor z-scores, sector, median 12-1
+  momentum of the universe, breadth above the 50-DMA.
+- **Model**: `HistGradientBoostingClassifier`, walk-forward by calendar year,
+  training labels ending 63 days before each test year. Weekly retrain
+  (Saturday 09:00 IST) plus an admin trigger.
+- **Outputs**: per-stock odds and percentile; "type of stock" profiles (odds for
+  the top vs bottom quintile of each trait today); sector outlook with a
+  historical top-3 continuation rate; 20-year base rates per Buy Rank band at
+  1/3/6 months; per-year OOS accuracy, AUC, top-decile hit rate and excess
+  return; a calibration table.
+- **First run** (18.9 years, 207k training rows): OOS accuracy 51%, AUC 0.51,
+  top-decile beat the median in 13 of 16 test years by +1.4% per quarter. That
+  is the true size of a price-only edge at three months, and the UI says so
+  rather than dressing it up.
+
 ### 1.5 What is deliberately left out
 
 - **Options trading UI.** Options data feeds Weather (PCR, skew) and nothing

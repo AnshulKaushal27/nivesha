@@ -55,6 +55,8 @@ class Settings(BaseSettings):
 
     UPSTOX_ANALYTICS_TOKEN:   str = ""
     TWELVE_DATA_API_KEY:  str = ""
+    # auto → Upstox when a token exists, else indicators/prices from daily_bars
+    MARKET_DATA_SOURCE: str = "auto"      # auto | upstox | db
     # ── NSE Universe ───────────────────────────────────────────────────
     NIFTY_200_TICKERS: List[str] = [
         # Financials
