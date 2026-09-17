@@ -1,0 +1,36 @@
+# Nivesha — automatic HTTPS (Let's Encrypt) + one login for the whole site.
+__DOMAIN__ {
+	encode zstd gzip
+
+	basic_auth {
+		__USER__ __HASH__
+	}
+
+	# API under /api → FastAPI (prefix stripped). Streaming (Voxa) needs no buffering.
+	handle_path /api/* {
+		reverse_proxy 127.0.0.1:8000 {
+			flush_interval -1
+			transport http {
+				read_timeout 180s
+			}
+		}
+	}
+
+	# everything else → Next.js
+	handle {
+		reverse_proxy 127.0.0.1:3000
+	}
+
+	header {
+		X-Content-Type-Options nosniff
+		Referrer-Policy strict-origin-when-cross-origin
+		-Server
+	}
+
+	log {
+		output file /var/log/caddy/access.log {
+			roll_size 20MiB
+			roll_keep 5
+		}
+	}
+}

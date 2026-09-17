@@ -1,0 +1,18 @@
+[Unit]
+Description=Nivesha API + scheduler (FastAPI)
+After=network-online.target postgresql.service
+Wants=network-online.target
+
+[Service]
+User=nivesha
+WorkingDirectory=__SRC__/backend
+EnvironmentFile=__SRC__/backend/.env
+ExecStart=__SRC__/backend/.venv/bin/uvicorn main:app --host 127.0.0.1 --port 8000 --workers 1 --timeout-keep-alive 30
+Restart=always
+RestartSec=5
+# keep a runaway training job from taking the box down
+MemoryMax=1400M
+Nice=5
+
+[Install]
+WantedBy=multi-user.target

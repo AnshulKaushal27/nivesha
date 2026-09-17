@@ -43,10 +43,11 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
+_origins = [o.strip() for o in settings.CORS_ORIGINS.split(",") if o.strip()] or ["*"]
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],      # lock this down in production
-    allow_credentials=True,
+    allow_origins=_origins,             # "*" in dev; set CORS_ORIGINS=https://your.domain in production
+    allow_credentials="*" not in _origins,
     allow_methods=["*"],
     allow_headers=["*"],
 )

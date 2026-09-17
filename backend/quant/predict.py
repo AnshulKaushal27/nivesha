@@ -245,7 +245,10 @@ def band_base_rates(df: pd.DataFrame) -> list[dict]:
 def train_and_store(db: Session, min_years_history: int = 3) -> dict:
     tickers = universe_tickers(db)
     sectors = sector_lookup(db)
-    bars = load_bars(db, tickers=tickers, start=DateType(1990, 1, 1))
+    start = DateType(1990, 1, 1)
+    if settings.PREDICTOR_MAX_YEARS > 0:            # small instances: cap the training window
+        start = DateType.today().replace(year=DateType.today().year - settings.PREDICTOR_MAX_YEARS)
+    bars = load_bars(db, tickers=tickers, start=start)
     if bars.empty:
         raise RuntimeError("No bars in the database")
     logger.info("Predictor: %d bars, %d tickers, %s → %s", len(bars), bars["ticker"].nunique(), bars["date"].min().date(), bars["date"].max().date())

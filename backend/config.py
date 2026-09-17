@@ -11,6 +11,8 @@ class Settings(BaseSettings):
     APP_NAME: str = "Nivesha"
     ASSISTANT_NAME: str = "Voxa"
     PREDICTOR_RETRAIN_DAYS: int = 7           # retrain when the last training is older than this
+    PREDICTOR_MAX_YEARS: int = 0              # cap training history (0 = all). 8 fits a 1 GB instance; 0 needs ~3 GB
+    CORS_ORIGINS: str = "*"                   # comma-separated origins in production, e.g. https://nivesha.duckdns.org
 
     # ── LLM gateway (OpenAI-compatible) ────────────────────────────────
     AICREDITS_API_KEY: str = ""
