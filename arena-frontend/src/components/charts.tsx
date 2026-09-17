@@ -272,6 +272,28 @@ export function PriceChart({ history, color = "var(--series-1)" }: { history: { 
   );
 }
 
+/* ── Prediction vs reality: stock vs median stock, indexed to 100 ───── */
+export function TrackChart({ series, color = "var(--series-1)" }: { series: { date: string; stock: number; market: number | null }[]; color?: string }) {
+  if (!series.length) return <div style={{ color: "var(--text-muted)", fontSize: 13 }}>No prices since the prediction date yet.</div>;
+  const vals = series.flatMap((s) => [s.stock, s.market ?? 100]);
+  const lo = Math.floor(Math.min(...vals) - 1), hi = Math.ceil(Math.max(...vals) + 1);
+  return (
+    <Box h={200}>
+      <LineChart data={series} margin={{ top: 8, right: 8, bottom: 0, left: -12 }}>
+        <CartesianGrid vertical={false} stroke="var(--grid)" />
+        <XAxis dataKey="date" tickFormatter={(d: string) => fmtDate(d).slice(0, 6)} tick={AXIS} axisLine={{ stroke: "var(--axis)" }} tickLine={false} minTickGap={36} />
+        <YAxis domain={[lo, hi]} tick={AXIS} axisLine={false} tickLine={false} />
+        <ReferenceLine y={100} stroke="var(--axis)" strokeDasharray="4 4" label={{ value: "start", position: "insideTopRight", fontSize: 10, fill: "var(--text-muted)" }} />
+        <Tooltip contentStyle={TIP} cursor={{ stroke: "var(--axis)", strokeDasharray: "3 3" }} labelFormatter={(d) => fmtDate(String(d))}
+                 formatter={(v: number, n: string) => [`${(v - 100) >= 0 ? "+" : ""}${(v - 100).toFixed(2)}%`, n === "stock" ? "This stock" : "Median stock"]} />
+        <Legend formatter={(v: string) => <span style={{ color: "var(--text-2)", fontSize: 12 }}>{v === "stock" ? "This stock" : "Median predicted stock (the market)"}</span>} />
+        <Line dataKey="stock" stroke={color} strokeWidth={2.5} dot={false} activeDot={{ r: 5, stroke: "var(--card)", strokeWidth: 2 }} isAnimationActive={false} />
+        <Line dataKey="market" stroke="var(--text-muted)" strokeWidth={1.5} strokeDasharray="5 4" dot={false} connectNulls isAnimationActive={false} />
+      </LineChart>
+    </Box>
+  );
+}
+
 /* ── Allocation donut for one Arena manager ─────────────────────────── */
 export function AllocationDonut({ holdings, color, cash }: { holdings: { ticker: string; allocation_percent: number }[]; color: string; cash?: number }) {
   const sorted = [...holdings].sort((a, b) => b.allocation_percent - a.allocation_percent);

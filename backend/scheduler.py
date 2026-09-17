@@ -129,8 +129,12 @@ async def morning_job():
             ))
         db.commit()
 
-        # ④ Generate portfolio per model
+        # ④ Generate portfolio per model (respecting the daily AI budget)
+        from ops.llm_usage import enforce_budget
         model_results = []
+        if not enforce_budget("arena"):
+            logger.warning("Daily AI budget exhausted — AI managers skip today's round")
+            return {"candidates": candidates, "model_results": [], "error": "Daily AI budget used up; the round was skipped"}
         for model_name in SUPPORTED_MODELS:
             try:
                 # Skip if already done today

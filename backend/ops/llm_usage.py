@@ -108,6 +108,62 @@ class UsageRecorder(BaseCallbackHandler):
 recorder = UsageRecorder()
 
 
+# ── Daily budget (₹) ───────────────────────────────────────────────────────
+
+_budget_cache: dict = {"day": None, "at": 0.0, "spent_usd": 0.0}
+
+
+def today_spend_usd(db: Session | None = None) -> float:
+    own = db is None
+    db = db or SessionLocal()
+    try:
+        return float(db.execute(select(func.coalesce(func.sum(LlmUsage.est_cost_usd), 0.0)).where(LlmUsage.date == date.today())).scalar() or 0.0)
+    finally:
+        if own:
+            db.close()
+
+
+def budget_status(db: Session | None = None) -> dict:
+    """Today's estimated spend against LLM_DAILY_BUDGET_INR."""
+    spent_usd = today_spend_usd(db)
+    spent_inr = spent_usd * settings.USD_INR
+    cap = settings.LLM_DAILY_BUDGET_INR
+    return {
+        "budget_inr": cap, "spent_inr": round(spent_inr, 4), "spent_usd": round(spent_usd, 6),
+        "remaining_inr": round(max(0.0, cap - spent_inr), 4) if cap > 0 else None,
+        "pct_used": round(100 * spent_inr / cap, 1) if cap > 0 else None,
+        "exhausted": cap > 0 and spent_inr >= cap, "usd_inr": settings.USD_INR,
+    }
+
+
+def budget_exhausted() -> bool:
+    """Cheap check before an optional model call; cached for 20 s so chat turns don't hammer the DB."""
+    import time
+    cap = settings.LLM_DAILY_BUDGET_INR
+    if cap <= 0:
+        return False
+    now = time.monotonic()
+    if _budget_cache["day"] != date.today() or now - _budget_cache["at"] > 20:
+        try:
+            _budget_cache.update(day=date.today(), at=now, spent_usd=today_spend_usd())
+        except Exception:                           # noqa: BLE001 — never block on a metering hiccup
+            return False
+    return _budget_cache["spent_usd"] * settings.USD_INR >= cap
+
+
+def enforce_budget(feature: str) -> bool:
+    """True if the call may proceed. On the first refusal of the day raises an info alert."""
+    if not budget_exhausted():
+        return True
+    from ops.alerts import raise_alert
+    raise_alert("budget_exceeded", f"Today's AI budget of ₹{settings.LLM_DAILY_BUDGET_INR:.0f} is used up; optional AI features "
+                f"(Voxa, explanations, AI managers) pause until midnight. Raise LLM_DAILY_BUDGET_INR to change this. (blocked: {feature})", "info")
+    return False
+
+
+BUDGET_MESSAGE = "Today's AI budget (₹{cap:.0f}) is used up, so I can't call the model right now. Everything on the page still works; I'm back after midnight."
+
+
 # ── Reporting and projection ───────────────────────────────────────────────
 
 def summary(db: Session) -> dict:
@@ -156,6 +212,7 @@ def summary(db: Session) -> dict:
             projection = {"error": "LLM_CREDITS_AS_OF must be an ISO date like 2026-09-17"}
 
     return {"today": today_s, "last_30_days": m30, "all_time": total, "burn_per_day_usd": round(burn_per_day, 4),
+            "budget": budget_status(db),
             "by_feature_30d": by_feature, "by_model_30d": by_model, "daily_30d": daily, "projection": projection,
             "note": "Costs are estimates from a public price table; your gateway may bill differently. Set LLM_CREDITS_USD and LLM_CREDITS_AS_OF for a run-out date."}
 

@@ -2,29 +2,33 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
-import { api, type Explanation, type RankDetail } from "@/lib/api";
+import { api, type Explanation, type PredictionTrack, type RankDetail } from "@/lib/api";
 import { BAND, FACTOR_LABEL, FACTOR_ORDER, fmtDate, fmtINR, fmtPct, logToPct } from "@/lib/signals";
 import { BandChip, RankRing } from "@/components/RankRing";
 import { FactorBars } from "@/components/FactorBars";
 import { RankSparkline } from "@/components/Sparkline";
-import { PriceChart } from "@/components/charts";
+import { PriceChart, TrackChart } from "@/components/charts";
+import { Pill } from "@/components/ui";
 import { useScreen } from "@/lib/screen";
 
 export default function StockRankPage({ params }: { params: { symbol: string } }) {
   const symbol = decodeURIComponent(params.symbol).toUpperCase();
   const [d, setD] = useState<RankDetail | null>(null);
   const [ex, setEx] = useState<Explanation | null>(null);
+  const [track, setTrack] = useState<PredictionTrack | null>(null);
   const [exLoading, setExLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     api.rankDetail(symbol, 120).then(setD).catch((e: Error) => setError(e.message));
+    api.predictTrack(symbol).then(setTrack).catch(() => setTrack(null));
   }, [symbol]);
 
   useScreen(d ? {
     page: "stock", route: `/rank/${symbol}`, title: `${d.symbol} — Strength Score ${(d.score ?? d.buy_rank).toFixed(1)} (${d.band})`, asOf: d.date,
     summary: `Stock page for ${d.symbol} (${d.sector}). Strength Score ${(d.score ?? d.buy_rank).toFixed(1)}/100 (position #${d.position} of ${d.universe}), band ${d.band}, price ₹${d.close}, as of ${d.date}.` +
-      (ex ? ` AI explanation shown: ${ex.bullets.join(" ")} Watch out: ${ex.watch_out}` : " AI explanation not requested yet."),
+      (ex ? ` AI explanation shown: ${ex.bullets.join(" ")} Watch out: ${ex.watch_out}` : " AI explanation not requested yet.") +
+      (track ? ` Prediction made ${track.prediction_date}: ${track.odds_pct}% odds of beating the market over ${track.horizon_days} trading days; after ${track.days_elapsed} days the stock is ${fmtPct(track.stock_pct)} vs market ${fmtPct(track.market_pct)} (${track.verdict}).` : ""),
     data: {
       buy_rank: d.buy_rank, band: d.band, sector: d.sector, price: d.close, eligible: d.eligible,
       factor_z_scores: d.z, factor_contributions: d.contributions, raw_factor_values: d.raw,
@@ -118,6 +122,22 @@ export default function StockRankPage({ params }: { params: { symbol: string } }
 
         {/* History + facts */}
         <div style={{ display: "grid", gap: 20, alignContent: "start" }}>
+          {track && (
+            <section className="card fade-up-1" style={{ padding: 22 }}>
+              <div style={{ display: "flex", flexWrap: "wrap", justifyContent: "space-between", alignItems: "baseline", gap: 8 }}>
+                <h2 style={{ fontFamily: "var(--font-display)", fontWeight: 800, fontSize: 18 }}>Prediction vs reality</h2>
+                <Pill tone={track.verdict === "on track" ? "strong" : track.verdict === "behind" ? "weak" : "neutral"}>{track.verdict}</Pill>
+              </div>
+              <div style={{ fontSize: 12.5, color: "var(--text-muted)", margin: "4px 0 10px", lineHeight: 1.5 }}>
+                On {fmtDate(track.prediction_date)} the model gave this stock <b style={{ color: "var(--text)" }}>{track.odds_pct}%</b> odds of beating the market over {track.horizon_days} trading days
+                (ends around {fmtDate(track.expected_end)}). Day {track.days_elapsed} of {track.days_total}: stock <b style={{ color: (track.stock_pct ?? 0) >= 0 ? "var(--strong-ink)" : "var(--weak-ink)" }}>{fmtPct(track.stock_pct)}</b>, market <b>{fmtPct(track.market_pct)}</b>.
+              </div>
+              <TrackChart series={track.series} color={s.fill} />
+              <div style={{ marginTop: 8, height: 6, borderRadius: 999, background: "var(--card2)", overflow: "hidden" }} aria-label={`${track.days_elapsed} of ${track.days_total} trading days elapsed`}>
+                <div style={{ width: `${Math.min(100, track.days_elapsed / track.days_total * 100)}%`, height: "100%", background: "var(--accent)" }} />
+              </div>
+            </section>
+          )}
           <section className="card fade-up-2" style={{ padding: 22 }}>
             <h2 style={{ fontFamily: "var(--font-display)", fontWeight: 800, fontSize: 18, marginBottom: 4 }}>Price, last {d.history.length} trading days</h2>
             <div style={{ fontSize: 12.5, color: "var(--text-muted)", marginBottom: 8 }}>Closing price with its 20-day average. A price above the average means the recent trend is up.</div>

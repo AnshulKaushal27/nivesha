@@ -55,3 +55,20 @@ def test_cost_estimate_uses_price_table():
     assert abs(estimate_cost("gpt-4o-mini", 1_000_000, 0) - 0.15) < 1e-9
     assert abs(estimate_cost("gpt-4o-mini", 0, 1_000_000) - 0.60) < 1e-9
     assert estimate_cost("some/unknown-model", 1_000_000, 1_000_000) == 2.0     # fallback 0.5 + 1.5
+
+
+def test_budget_status_and_exhaustion(monkeypatch):
+    import ops.llm_usage as u
+    monkeypatch.setattr(u.settings, "LLM_DAILY_BUDGET_INR", 5.0)
+    monkeypatch.setattr(u.settings, "USD_INR", 100.0)
+    monkeypatch.setattr(u, "today_spend_usd", lambda db=None: 0.03)     # ₹3 spent
+    u._budget_cache.update(day=None)
+    b = u.budget_status()
+    assert b["spent_inr"] == 3.0 and b["remaining_inr"] == 2.0 and not b["exhausted"]
+    assert not u.budget_exhausted()
+    monkeypatch.setattr(u, "today_spend_usd", lambda db=None: 0.06)     # ₹6 spent
+    u._budget_cache.update(day=None)
+    assert u.budget_status()["exhausted"] and u.budget_exhausted()
+    monkeypatch.setattr(u.settings, "LLM_DAILY_BUDGET_INR", 0.0)        # cap disabled
+    u._budget_cache.update(day=None)
+    assert not u.budget_exhausted()

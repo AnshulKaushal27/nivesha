@@ -219,6 +219,12 @@ def guard(state: ChatState) -> ChatState:
                 "messages": [AIMessage(content="That message is very long. Could you ask it in a shorter form?",
                                        additional_kwargs={"declined": True})]}
 
+    from ops.llm_usage import BUDGET_MESSAGE, enforce_budget
+    if not enforce_budget("chat"):
+        return {"guard": {"allow": False, "category": "budget", "reason": "daily budget exhausted"},
+                "messages": [AIMessage(content=BUDGET_MESSAGE.format(cap=settings.LLM_DAILY_BUDGET_INR),
+                                       additional_kwargs={"declined": True, "transient": True})]}
+
     # a little conversational context helps the classifier with follow-ups ("and this one?")
     recent = [m for m in state.get("messages", []) if isinstance(m, (HumanMessage, AIMessage)) and m.content][-5:-1]
     ctx = "\n".join(f"{'User' if isinstance(m, HumanMessage) else 'Assistant'}: {str(m.content)[:300]}" for m in recent)

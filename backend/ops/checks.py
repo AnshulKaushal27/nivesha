@@ -40,9 +40,13 @@ def llm_heartbeat() -> dict:
         return {"ok": False, "kind": kind, "error": str(exc)[:300]}
     for k in ("credits_exhausted", "llm_auth_failed", "llm_gateway_down", "llm_rate_limited", "llm_error"):
         resolve(k)
+    from ops.llm_usage import budget_status
     with SessionLocal() as db:
         proj = check_credit_projection(db)
-    return {"ok": True, "projection": proj}
+        budget = budget_status(db)
+    if not budget["exhausted"]:
+        resolve("budget_exceeded")                  # new day, new budget
+    return {"ok": True, "projection": proj, "budget": budget}
 
 
 def upstox_check() -> dict:

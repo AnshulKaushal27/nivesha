@@ -216,7 +216,8 @@ def explain_rank(db: Session, ticker: str, as_of: DateType | None = None) -> dic
     if cached:
         return _out(score, cached.bullets, cached.watch_out, cached.model, cached.attempts, cached.audit_dropped, True)
 
-    if not llm_available():
+    from ops.llm_usage import enforce_budget
+    if not llm_available() or not enforce_budget("explain"):
         t = template_explanation(score)
         return _persist(db, score, t["bullets"], t["watch_out"], "template", 0, 0)
 

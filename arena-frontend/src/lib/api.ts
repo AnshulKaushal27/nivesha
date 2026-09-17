@@ -63,6 +63,13 @@ export interface PredictionItem {
   ticker: string; symbol: string; date: string; horizon: number;
   prob_up: number; pct_rank: number; sector: string | null; close: number | null;
   buy_rank: number | null; features: Record<string, number | null>;
+  so_far_pct?: number | null; market_so_far_pct?: number | null; beating_so_far?: boolean | null;
+}
+export interface PredictionTrack {
+  symbol: string; prediction_date: string; horizon_days: number; odds_pct: number; pct_rank: number;
+  days_elapsed: number; days_total: number; expected_end: string;
+  stock_pct: number | null; market_pct: number | null; beating: boolean | null; verdict: string;
+  series: { date: string; stock: number; market: number | null }[];
 }
 export interface PredictRun {
   as_of: string; horizon_days: number; history_start: string; history_years: number;
@@ -76,7 +83,7 @@ export interface PredictRun {
   band_base_rates: { band: string; horizon: number; n: number; hit_rate: number; median_return_pct: number; beat_market_rate: number }[];
   market_now: { mkt_mom_pct: number; breadth: number };
 }
-export interface PredictList { run: PredictRun | null; count: number; items: PredictionItem[] }
+export interface PredictList { run: PredictRun | null; count: number; as_of_prices?: string | null; market_so_far_pct?: number | null; items: PredictionItem[] }
 
 /* ── Arena (v1 endpoints) ────────────────────────────────────────────── */
 export interface Holding {
@@ -125,6 +132,7 @@ export interface SystemStatus {
     last_30_days: { calls: number; input_tokens: number; output_tokens: number; est_cost_usd: number; errors: number };
     all_time: { calls: number; est_cost_usd: number };
     burn_per_day_usd: number;
+    budget: { budget_inr: number; spent_inr: number; spent_usd: number; remaining_inr: number | null; pct_used: number | null; exhausted: boolean; usd_inr: number };
     by_feature_30d: { feature: string; calls: number; est_cost_usd: number }[];
     by_model_30d: { model: string; calls: number; est_cost_usd: number }[];
     daily_30d: { date: string; est_cost_usd: number; calls: number }[];
@@ -153,6 +161,7 @@ export const api = {
     return get<PredictList>(`/predict?${p.toString()}`);
   },
   predictLive: () => get<PredictLive>("/predict/live"),
+  predictTrack: (ticker: string) => get<PredictionTrack>(`/predict/${encodeURIComponent(ticker)}/track`),
   predictOne: (ticker: string) => get<PredictionItem & { oos: PredictRun["oos"]; history_years: number }>(`/predict/${encodeURIComponent(ticker)}`),
 
   status: () => get<SystemStatus>("/status"),

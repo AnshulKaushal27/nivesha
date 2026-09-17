@@ -125,14 +125,14 @@ export default function PredictPage() {
               <div style={{ overflowX: "auto" }}>
                 <table style={{ width: "100%", borderCollapse: "collapse", minWidth: 720 }}>
                   <thead><tr style={{ background: "var(--card2)" }}>
-                    {["#", "Stock", "Sector", "Odds of beating market", "Strength Score", "Price"].map((h, i) => (
+                    {["#", "Stock", "Sector", "Odds of beating market", "So far vs market", "Strength Score", "Price"].map((h, i) => (
                       <th key={h} className="eyebrow" style={{ textAlign: i >= 3 ? "right" : "left", padding: "12px 14px", whiteSpace: "nowrap" }}>{h}</th>
                     ))}
                   </tr></thead>
                   <tbody>
                     {filtered.slice(0, shown).map((p, n) => <OddsRow key={p.ticker} p={p} n={n} />)}
                     {filtered.length === 0 && (
-                      <tr><td colSpan={6} style={{ padding: 32, textAlign: "center", color: "var(--text-muted)" }}>
+                      <tr><td colSpan={7} style={{ padding: 32, textAlign: "center", color: "var(--text-muted)" }}>
                         {q ? <>No stock or sector matches “{q}”. The odds cover {items.length} eligible NIFTY 500 stocks.</> : "Nothing to show."}
                       </td></tr>
                     )}
@@ -309,6 +309,14 @@ function OddsRow({ p, n }: { p: PredictionItem; n: number }) {
       <td style={{ padding: "12px 14px" }}><Link href={`/rank/${p.symbol}`} style={{ fontWeight: 800 }}>{p.symbol}</Link></td>
       <td style={{ padding: "12px 14px", color: "var(--text-2)", fontSize: 13, maxWidth: 220, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{p.sector}</td>
       <td style={{ padding: "12px 14px", textAlign: "right" }}><OddsBar v={p.prob_up} /></td>
+      <td className="tnum" style={{ padding: "12px 14px", textAlign: "right", whiteSpace: "nowrap" }}>
+        {p.so_far_pct == null ? <span style={{ color: "var(--text-dim)" }}>—</span> : (
+          <span title={`Stock ${fmtPct(p.so_far_pct)} vs median stock ${fmtPct(p.market_so_far_pct)} since the prediction date`}>
+            <b style={{ color: p.beating_so_far ? "var(--strong-ink)" : "var(--weak-ink)" }}>{p.beating_so_far ? "▲" : "▼"} {fmtPct(p.so_far_pct)}</b>
+            <span style={{ color: "var(--text-muted)", fontSize: 11.5 }}> vs {fmtPct(p.market_so_far_pct)}</span>
+          </span>
+        )}
+      </td>
       <td className="tnum" style={{ padding: "12px 14px", textAlign: "right", fontWeight: 700 }}>{p.buy_rank ?? "—"}</td>
       <td className="tnum" style={{ padding: "12px 14px", textAlign: "right", color: "var(--text-2)" }}>{fmtINR(p.close)}</td>
     </tr>

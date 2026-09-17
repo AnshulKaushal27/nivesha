@@ -39,6 +39,8 @@ class Settings(BaseSettings):
     LLM_PRICES_JSON: str = ""                     # optional override: {"model": [in_usd_per_1M, out_usd_per_1M]}
     ALERT_CREDITS_LOW_PCT: float = 20.0           # warn when estimated remaining < this % of the balance
     ALERT_CREDITS_LOW_DAYS: int = 14              # …or fewer than this many days at the current burn rate
+    LLM_DAILY_BUDGET_INR: float = 5.0             # hard cap on estimated AI spend per day (0 = no cap)
+    USD_INR: float = 88.0                         # for converting the USD price table to rupees
 
     # ── Database ───────────────────────────────────────────────────────
     # SQLite for a zero-setup start; Postgres for real work:

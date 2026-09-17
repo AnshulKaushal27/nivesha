@@ -49,7 +49,9 @@ export default function StatusPage() {
       <section style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(170px, 1fr))", gap: 12 }}>
         <StatTile label="Overall" value={s.overall.toUpperCase()} tone={tone} sub={`${s.alerts.length} open alert${s.alerts.length === 1 ? "" : "s"}`} />
         <StatTile label="Latest prices" value={fmtDate(s.data.latest_bars)} sub={`scores ${fmtDate(s.data.latest_scores)}`} />
-        <StatTile label="AI spend today" value={`$${s.llm.today.est_cost_usd.toFixed(3)}`} sub={`${s.llm.today.calls} calls · 30d $${s.llm.last_30_days.est_cost_usd.toFixed(2)}`} tone="accent" />
+        <StatTile label="Today's AI budget" value={s.llm.budget.budget_inr > 0 ? `₹${s.llm.budget.spent_inr.toFixed(2)} / ₹${s.llm.budget.budget_inr.toFixed(0)}` : `₹${s.llm.budget.spent_inr.toFixed(2)}`}
+                  sub={s.llm.budget.budget_inr > 0 ? (s.llm.budget.exhausted ? "used up — optional AI paused until midnight" : `${s.llm.budget.pct_used}% used · ${s.llm.today.calls} calls · 30d $${s.llm.last_30_days.est_cost_usd.toFixed(2)}`) : "no daily cap set"}
+                  tone={s.llm.budget.exhausted ? "weak" : (s.llm.budget.pct_used ?? 0) > 70 ? "neutral" : "accent"} />
         <StatTile label="Credits left" value={p ? `$${p.remaining_usd.toFixed(2)}` : "not set"} sub={p ? (p.runs_out_on ? `≈ ${p.days_left} days · out around ${fmtDate(p.runs_out_on)}` : "no spend yet") : "set LLM_CREDITS_USD in .env"}
                   tone={p ? (p.remaining_pct < 20 ? "weak" : p.remaining_pct < 50 ? "neutral" : "strong") : undefined} />
         <StatTile label="Push channels" value={s.channels.telegram || s.channels.webhook ? "on" : "off"} sub={[s.channels.telegram && "Telegram", s.channels.webhook && "webhook"].filter(Boolean).join(" · ") || "log + this page only"} />
