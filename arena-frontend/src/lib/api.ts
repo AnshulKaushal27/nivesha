@@ -21,9 +21,22 @@ export interface RankItem {
   contributions: Record<FactorKey, number | null>;
 }
 
-export interface RankList { date: string | null; count: number; items: RankItem[] }
+export interface RankList { date: string | null; count: number; universe?: number; items: (RankItem & { position?: number })[] }
+
+export interface LiveScore {
+  run_date: string; matured_on: string; horizon: number; n: number; auc: number | null; accuracy: number;
+  top_decile_hit: number; top_decile_excess_pct: number; median_return_pct: number;
+}
+export interface PredictLive {
+  scores: LiveScore[];
+  next_maturity: { run_date: string; horizon: number; expected_on: string; pending_batches: number } | null;
+  training_history: string[];
+  model_card: { algorithm: string; target: string; features: string[]; validation: string; training_stride_days: number;
+                retrain_policy: string; last_trained: string | null; history_years: number | null; n_train_rows: number | null };
+}
 
 export interface RankDetail extends RankItem {
+  position?: number; universe?: number;
   z: Record<FactorKey, number | null>;
   raw: Record<string, number | null>;
   history: { date: string; buy_rank: number; close: number }[];
@@ -103,6 +116,7 @@ export const api = {
     Object.entries(q).forEach(([k, v]) => v !== undefined && v !== "" && p.set(k, String(v)));
     return get<PredictList>(`/predict?${p.toString()}`);
   },
+  predictLive: () => get<PredictLive>("/predict/live"),
   predictOne: (ticker: string) => get<PredictionItem & { oos: PredictRun["oos"]; history_years: number }>(`/predict/${encodeURIComponent(ticker)}`),
 
   simToday: () => get<SimData>("/simulation/today"),

@@ -2,9 +2,10 @@
 
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
-import { api, type PredictionItem, type PredictRun } from "@/lib/api";
+import { api, type PredictionItem, type PredictLive, type PredictRun } from "@/lib/api";
 import { fmtDate, fmtINR, fmtPct } from "@/lib/signals";
 import { Button, EmptyState, LoadMore, PageHeader, Pill, Section, StatTile, Tabs } from "@/components/ui";
+import { BaseRateChart, CalibrationChart, FoldsChart, LiveScoreChart, OddsHistogram, ProfileChart, SectorBars } from "@/components/charts";
 import { useScreen } from "@/lib/screen";
 
 const PAGE = 20;
@@ -13,6 +14,7 @@ const TAB_LABEL: Record<Tab, string> = { odds: "Best odds now", types: "What typ
 
 export default function PredictPage() {
   const [run, setRun] = useState<PredictRun | null>(null);
+  const [live, setLive] = useState<PredictLive | null>(null);
   const [items, setItems] = useState<PredictionItem[]>([]);
   const [tab, setTab] = useState<Tab>("odds");
   const [shown, setShown] = useState(PAGE);
@@ -27,6 +29,7 @@ export default function PredictPage() {
       .then((r) => { setRun(r.run); setItems(r.items); setError(null); })
       .catch((e: Error) => setError(e.message))
       .finally(() => setLoading(false));
+    api.predictLive().then(setLive).catch(() => setLive(null));
   }
   useEffect(load, []);
   useEffect(() => { setShown(PAGE); }, [sector]);
@@ -103,6 +106,10 @@ export default function PredictPage() {
                   <option value="">All sectors</option>{sectors.map((s) => <option key={s}>{s}</option>)}
                 </select>
               }>
+              <div style={{ marginBottom: 14 }}>
+                <div className="eyebrow" style={{ marginBottom: 6 }}>How the odds are spread across {filtered.length} stocks</div>
+                <OddsHistogram probs={filtered.map((p) => p.prob_up)} />
+              </div>
               <div style={{ overflowX: "auto" }}>
                 <table style={{ width: "100%", borderCollapse: "collapse", minWidth: 720 }}>
                   <thead><tr style={{ background: "var(--card2)" }}>
@@ -121,8 +128,9 @@ export default function PredictPage() {
 
           {tab === "types" && (
             <div style={{ display: "grid", gap: 20 }}>
-              <Section title="Which traits carry the best odds right now" sub="Average model odds for stocks in the top fifth vs the bottom fifth of each trait, today">
-                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))", gap: 12 }}>
+              <Section title="Which traits carry the best odds right now" sub="Average model odds for stocks in the top fifth vs the bottom fifth of each trait, today. Bars further right of the dashed 50% line mean better odds.">
+                <ProfileChart profiles={run.profiles} />
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))", gap: 12, marginTop: 16 }}>
                   {run.profiles.map((p) => {
                     const up = p.edge >= 0;
                     return (
@@ -153,6 +161,9 @@ export default function PredictPage() {
 
           {tab === "sectors" && (
             <Section title="Sector outlook" sub={`Average odds by sector today. Historically, a sector in the top 3 for 6-month strength stayed ahead of the median sector over the next 3 months ${Math.round((run.sectors[0]?.top3_continuation_rate ?? 0) * 100)}% of the time.`}>
+              <div style={{ marginBottom: 16 }}>
+                <SectorBars rows={run.sectors.map((s) => ({ sector: s.sector, avg_prob: s.avg_prob * 100 }))} valueKey="avg_prob" label="average odds" max={12} formatter={(v) => `${v.toFixed(0)}%`} />
+              </div>
               <div style={{ overflowX: "auto" }}>
                 <table style={{ width: "100%", borderCollapse: "collapse", minWidth: 640 }}>
                   <thead><tr style={{ background: "var(--card2)" }}>
@@ -182,7 +193,8 @@ export default function PredictPage() {
                 {[21, 63, 126].map((h) => (
                   <div key={h} className="card" style={{ padding: 16, background: "var(--card2)", borderColor: "transparent" }}>
                     <div className="eyebrow" style={{ marginBottom: 10 }}>Next {h === 21 ? "1 month" : h === 63 ? "3 months" : "6 months"}</div>
-                    <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
+                    <BaseRateChart rows={run.band_base_rates.filter((r) => r.horizon === h)} />
+                    <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13, marginTop: 8 }}>
                       <thead><tr>{["Band", "Went up", "Beat market", "Median"].map((x, i) => <th key={x} style={{ textAlign: i ? "right" : "left", paddingBottom: 6, fontSize: 11, color: "var(--text-muted)" }}>{x}</th>)}</tr></thead>
                       <tbody>
                         {run.band_base_rates.filter((r) => r.horizon === h).map((r) => (
@@ -207,9 +219,40 @@ export default function PredictPage() {
 
           {tab === "model" && (
             <div style={{ display: "grid", gap: 20 }}>
-              <Section title="Walk-forward test, year by year" sub={`Each year was predicted by a model trained only on earlier years, with labels ending ${run.horizon_days} trading days before the year began. ${run.n_train_rows.toLocaleString("en-IN")} training rows in the final model.`}
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))", gap: 20 }}>
+                <Section title="The model" sub="What it is and how it keeps itself current">
+                  <dl style={{ display: "grid", gridTemplateColumns: "auto 1fr", gap: "8px 14px", fontSize: 13 }}>
+                    <dt style={{ color: "var(--text-muted)" }}>Algorithm</dt><dd><b>{live?.model_card.algorithm ?? "HistGradientBoostingClassifier (scikit-learn)"}</b></dd>
+                    <dt style={{ color: "var(--text-muted)" }}>Predicts</dt><dd>{live?.model_card.target ?? `whether a stock beats the market median over ${run.horizon_days} trading days`}</dd>
+                    <dt style={{ color: "var(--text-muted)" }}>Learns from</dt><dd>7 Buy Rank factors, the sector, and two market-state readings (median momentum, breadth)</dd>
+                    <dt style={{ color: "var(--text-muted)" }}>Trained on</dt><dd>{run.history_years} years · {run.n_train_rows.toLocaleString("en-IN")} weekly samples · {run.n_tickers} stocks</dd>
+                    <dt style={{ color: "var(--text-muted)" }}>Tested by</dt><dd>{live?.model_card.validation ?? "walk-forward by calendar year"}</dd>
+                    <dt style={{ color: "var(--text-muted)" }}>Keeps current</dt><dd>{live?.model_card.retrain_policy ?? "retrains automatically when its last training is more than 7 days old"}</dd>
+                    <dt style={{ color: "var(--text-muted)" }}>Last trained</dt><dd className="tnum">{fmtDate(run.as_of)}{live && live.training_history.length > 1 && <span style={{ color: "var(--text-muted)" }}> · {live.training_history.length} trainings so far</span>}</dd>
+                  </dl>
+                </Section>
+                <Section title="Live scorecard" sub="Once a batch of predictions is 3 months old, it is scored against real prices. This is the test that never runs out.">
+                  {live && live.scores.length > 0 ? (
+                    <>
+                      <LiveScoreChart scores={live.scores} />
+                      <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 10, marginTop: 10 }}>
+                        <StatTile label="Batches scored" value={live.scores.length} />
+                        <StatTile label="Top-odds beat market" value={`${Math.round(live.scores.reduce((s, r) => s + r.top_decile_hit, 0) / live.scores.length * 100)}%`} tone="strong" />
+                        <StatTile label="Their extra return" value={fmtPct(live.scores.reduce((s, r) => s + r.top_decile_excess_pct, 0) / live.scores.length)} tone="accent" />
+                      </div>
+                    </>
+                  ) : (
+                    <div style={{ padding: "18px 16px", borderRadius: 12, background: "var(--card2)", fontSize: 13.5, lineHeight: 1.6 }}>
+                      <b>No batch has matured yet.</b> The first predictions were made on {fmtDate(live?.next_maturity?.run_date ?? run.as_of)}; their 3-month window closes around
+                      <b> {fmtDate(live?.next_maturity?.expected_on ?? null)}</b>. From then on this card fills in automatically, one batch per training, and the model retrains itself on the new prices every week.
+                    </div>
+                  )}
+                </Section>
+              </div>
+              <Section title="Walk-forward test, year by year" sub={`Each year was predicted by a model trained only on earlier years, with labels ending ${run.horizon_days} trading days before the year began. Bars are accuracy on every stock; the line is how often the top-odds group beat the market.`}
                 action={<Button onClick={train} disabled={training} variant="ghost">{training ? "Retraining…" : "Retrain now"}</Button>}>
-                <div style={{ overflowX: "auto" }}>
+                <FoldsChart folds={run.folds} />
+                <div style={{ overflowX: "auto", marginTop: 12 }}>
                   <table style={{ width: "100%", borderCollapse: "collapse", minWidth: 560 }}>
                     <thead><tr style={{ background: "var(--card2)" }}>
                       {["Test year", "Accuracy", "AUC", "Top-odds hit rate", "Top-odds extra return", "Stock-days"].map((h, i) => (
@@ -231,16 +274,8 @@ export default function PredictPage() {
                   </table>
                 </div>
               </Section>
-              <Section title="Are the odds honest?" sub="When the model said X%, how often did it happen? Bars should climb from left to right.">
-                <div style={{ display: "grid", gridTemplateColumns: `repeat(${Math.max(1, run.calibration.length)}, 1fr)`, gap: 10, alignItems: "end", height: 160 }}>
-                  {run.calibration.map((c) => (
-                    <div key={c.bin_lo} style={{ display: "grid", gap: 6, alignContent: "end", height: "100%" }}>
-                      <div className="tnum" style={{ fontSize: 12, fontWeight: 800, textAlign: "center" }}>{Math.round(c.actual * 100)}%</div>
-                      <div style={{ height: `${Math.max(4, c.actual * 120)}px`, borderRadius: "8px 8px 4px 4px", background: "var(--good)", opacity: 0.85 }} />
-                      <div style={{ fontSize: 11, color: "var(--text-muted)", textAlign: "center" }}>said {Math.round(c.bin_lo * 100)}–{Math.round(c.bin_hi * 100)}%</div>
-                    </div>
-                  ))}
-                </div>
+              <Section title="Are the odds honest?" sub="When the model said X%, how often did it actually happen? The bars should climb from left to right and track the line.">
+                <CalibrationChart rows={run.calibration} />
               </Section>
             </div>
           )}

@@ -209,6 +209,24 @@ class Prediction(Base):
     created_at = Column(DateTime, default=datetime.utcnow)
 
 
+class PredictionScore(Base):
+    """Live scorecard: how a past prediction batch actually did once its horizon matured."""
+    __tablename__ = "prediction_scores"
+    __table_args__ = (UniqueConstraint("run_date", "horizon", name="uq_prediction_score"),)
+
+    id                    = Column(Integer, primary_key=True)
+    run_date              = Column(Date, nullable=False, index=True)   # the prediction date
+    horizon               = Column(Integer, nullable=False)
+    matured_on            = Column(Date, nullable=False)               # trading date horizon days later
+    n                     = Column(Integer)
+    auc                   = Column(Float)
+    accuracy              = Column(Float)
+    top_decile_hit        = Column(Float)                              # share of top-10%-odds stocks that beat the median
+    top_decile_excess_pct = Column(Float)                              # their mean excess return, %
+    median_return_pct     = Column(Float)                              # universe median return over the window
+    scored_at             = Column(DateTime, default=datetime.utcnow)
+
+
 class IngestRun(Base):
     """Audit trail for every batch job so a bad day can be traced."""
     __tablename__ = "ingest_runs"

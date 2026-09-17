@@ -64,6 +64,18 @@ def run_nightly(
         run.rows = compute_and_store(db, backfill_days=backfill)
         summary["scores_written"] = run.rows
 
+    # Predictor upkeep: score matured batches against real prices, retrain if stale.
+    from quant.predict import retrain_if_due, score_matured
+    with job_run("predictor_score") as (db, run):
+        scored = score_matured(db)
+        run.rows = len(scored)
+        summary["batches_scored"] = len(scored)
+    with job_run("predictor_retrain") as (db, run):
+        status = retrain_if_due(db)
+        run.rows = 1 if status.get("retrained") else 0
+        run.detail = str(status)[:2000]
+        summary["retrain"] = status
+
     logger.info("Nightly done: %s", {k: v for k, v in summary.items() if k != "failed"})
     return summary
 

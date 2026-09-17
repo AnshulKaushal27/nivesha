@@ -17,6 +17,18 @@ if config.config_file_name is not None:
 config.set_main_option("sqlalchemy.url", settings.DATABASE_URL.replace("%", "%%"))
 target_metadata = database.Base.metadata
 
+# Tables owned by other libraries (LangGraph's checkpoint saver) are not ours to
+# create or drop. Autogenerate must ignore them.
+FOREIGN_TABLE_PREFIXES = ("checkpoint",)
+
+
+def include_object(obj, name, type_, reflected, compare_to):
+    if type_ == "table" and name and name.startswith(FOREIGN_TABLE_PREFIXES):
+        return False
+    if type_ == "index" and getattr(obj, "table", None) is not None and obj.table.name.startswith(FOREIGN_TABLE_PREFIXES):
+        return False
+    return True
+
 
 def run_migrations_offline() -> None:
     context.configure(
@@ -42,6 +54,7 @@ def run_migrations_online() -> None:
             target_metadata=target_metadata,
             render_as_batch=True,        # SQLite cannot ALTER in place; batch mode rebuilds the table
             compare_type=True,
+            include_object=include_object,
         )
         with context.begin_transaction():
             context.run_migrations()

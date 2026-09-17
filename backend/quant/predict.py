@@ -31,7 +31,7 @@ from config import settings
 from data.bars import load_bars
 from data.db_utils import upsert_replace
 from data.universe import sector_lookup, universe_tickers
-from database import ModelRun, Prediction
+from database import DailyBar, ModelRun, Prediction, PredictionScore
 from quant.buyrank import band_for, rank_cross_section
 from quant.factors import FACTOR_NAMES, bars_to_panels, compute_factors, compute_raw, eligibility
 
@@ -307,3 +307,90 @@ def train_and_store(db: Session, min_years_history: int = 3) -> dict:
     db.commit()
     logger.info("Predictor stored: %d predictions for %s; OOS AUC %.3f", len(rows), last_date.date(), oos_summary["auc"] or float("nan"))
     return meta
+
+
+# ── Self-maintenance: live scoring and automatic retraining ────────────────
+
+def score_matured(db: Session) -> list[dict]:
+    """
+    For every prediction batch whose horizon has passed, compare the odds with
+    what actually happened and store a PredictionScore row. Idempotent.
+    """
+    from sqlalchemy import distinct, select
+
+    trading_days = [d for (d,) in db.execute(select(distinct(DailyBar.date)).order_by(DailyBar.date)).all()]
+    if not trading_days:
+        return []
+    idx = {d: i for i, d in enumerate(trading_days)}
+    batches = db.execute(select(distinct(Prediction.date), Prediction.horizon)
+                         .group_by(Prediction.date, Prediction.horizon).order_by(Prediction.date)).all()
+    already = {(r.run_date, r.horizon) for r in db.execute(select(PredictionScore)).scalars().all()}
+
+    out = []
+    for run_date, horizon in batches:
+        if (run_date, horizon) in already or run_date not in idx:
+            continue
+        j = idx[run_date] + horizon
+        if j >= len(trading_days):
+            continue                                   # not matured yet
+        matured_on = trading_days[j]
+        preds = db.execute(select(Prediction.ticker, Prediction.prob_up)
+                           .where(Prediction.date == run_date, Prediction.horizon == horizon)).all()
+        tickers = [t for t, _ in preds]
+        c0 = dict(db.execute(select(DailyBar.ticker, DailyBar.close).where(DailyBar.date == run_date, DailyBar.ticker.in_(tickers))).all())
+        c1 = dict(db.execute(select(DailyBar.ticker, DailyBar.close).where(DailyBar.date == matured_on, DailyBar.ticker.in_(tickers))).all())
+        rows = [(p, math.log(c1[t] / c0[t])) for t, p in preds if t in c0 and t in c1 and c0[t] and c1[t]]
+        if len(rows) < 50:
+            continue
+        df = pd.DataFrame(rows, columns=["p", "ret"])
+        med = df["ret"].median()
+        df["y"] = (df["ret"] > med).astype(int)
+        top = df[df["p"] >= df["p"].quantile(0.9)]
+        auc = float(roc_auc_score(df["y"], df["p"])) if df["y"].nunique() > 1 else None
+        score = PredictionScore(
+            run_date=run_date, horizon=horizon, matured_on=matured_on, n=int(len(df)), auc=auc,
+            accuracy=float(((df["p"] > 0.5).astype(int) == df["y"]).mean()),
+            top_decile_hit=float(top["y"].mean()),
+            top_decile_excess_pct=float((math.e ** (top["ret"].mean() - med) - 1) * 100),
+            median_return_pct=float((math.e ** med - 1) * 100),
+        )
+        db.add(score)
+        out.append({"run_date": str(run_date), "matured_on": str(matured_on), "n": score.n, "auc": auc,
+                    "top_decile_hit": score.top_decile_hit, "top_decile_excess_pct": score.top_decile_excess_pct})
+        logger.info("Scored batch %s → %s: top-decile hit %.2f, excess %+.2f%%", run_date, matured_on, score.top_decile_hit, score.top_decile_excess_pct)
+    db.commit()
+    return out
+
+
+def retrain_if_due(db: Session, force: bool = False) -> dict:
+    """
+    Retrain when there is no model, or the last training is older than
+    PREDICTOR_RETRAIN_DAYS. Called nightly, so the model keeps learning from
+    each new week of prices without anyone pressing a button.
+    """
+    from sqlalchemy import select
+
+    last = db.execute(select(ModelRun).where(ModelRun.kind == MODEL_KIND)
+                      .order_by(ModelRun.as_of.desc()).limit(1)).scalar_one_or_none()
+    age = (DateType.today() - last.as_of).days if last else None
+    due = force or last is None or age >= settings.PREDICTOR_RETRAIN_DAYS
+    if not due:
+        return {"retrained": False, "last_as_of": str(last.as_of), "age_days": age, "next_in_days": settings.PREDICTOR_RETRAIN_DAYS - age}
+    meta = train_and_store(db)
+    return {"retrained": True, "as_of": meta["as_of"], "oos": meta["oos"], "previous_as_of": str(last.as_of) if last else None}
+
+
+def next_maturity(db: Session) -> dict | None:
+    """When does the oldest unscored batch mature? (for the UI's 'first live result on …')"""
+    from sqlalchemy import distinct, select
+
+    scored = {(r.run_date, r.horizon) for r in db.execute(select(PredictionScore)).scalars().all()}
+    batches = db.execute(select(distinct(Prediction.date), Prediction.horizon)
+                         .group_by(Prediction.date, Prediction.horizon).order_by(Prediction.date)).all()
+    pending = [(d, h) for d, h in batches if (d, h) not in scored]
+    if not pending:
+        return None
+    d, h = pending[0]
+    from datetime import timedelta
+    approx = d + timedelta(days=int(h * 7 / 5) + 4)      # trading days → calendar, plus holidays
+    return {"run_date": str(d), "horizon": h, "expected_on": str(approx), "pending_batches": len(pending)}

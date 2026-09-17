@@ -3,8 +3,8 @@ import "./globals.css";
 import { AppShell } from "@/components/AppShell";
 
 export const metadata: Metadata = {
-  title: "AI Investment Arena",
-  description: "Institutional-grade signals for NSE stocks, explained for beginners.",
+  title: "Nivesha",
+  description: "Institutional signals for NSE stocks, explained simply.",
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {

@@ -6,6 +6,7 @@ import { CartesianGrid, Legend, Line, LineChart, ResponsiveContainer, Tooltip, X
 import { api, type HistoryMap, type LeaderboardEntry, type ModelResult, type PortfolioDetail, type PortfolioListItem, type SimData } from "@/lib/api";
 import { fmtDate, fmtINR, fmtPct, modelMeta, RISK_TONE } from "@/lib/signals";
 import { Button, EmptyState, LoadMore, PageHeader, Pill, Section, StatTile, Tabs } from "@/components/ui";
+import { AllocationDonut, LeaderBars } from "@/components/charts";
 import { useScreen } from "@/lib/screen";
 
 type Tab = "today" | "leaderboard" | "history" | "portfolios" | "shortlist";
@@ -147,6 +148,10 @@ function TodayView({ models }: { models: ModelResult[] }) {
         const meta = modelMeta(m.model);
         return (
           <Section key={m.model} title={`${meta.label} — today's portfolio`} sub={m.strategy_summary ?? ""}>
+            <div style={{ marginBottom: 16, padding: 14, borderRadius: 14, background: "var(--card2)" }}>
+              <div className="eyebrow" style={{ marginBottom: 8 }}>How the money is split</div>
+              <AllocationDonut holdings={m.portfolio} color={meta.color} cash={(m.remaining_cash / m.starting_capital) * 100} />
+            </div>
             <div style={{ display: "grid", gap: 10 }}>
               {[...m.portfolio].sort((a, b) => b.allocation_percent - a.allocation_percent).map((h) => (
                 <div key={h.ticker} style={{ display: "grid", gridTemplateColumns: "140px 1fr 90px 80px", alignItems: "center", gap: 12, padding: "10px 12px", borderRadius: 12, background: "var(--card2)" }}>
@@ -176,6 +181,9 @@ function TodayView({ models }: { models: ModelResult[] }) {
 function LeaderboardView({ board }: { board: LeaderboardEntry[] }) {
   return (
     <Section title="Leaderboard" sub="Ranked by average daily return across every round played">
+      <div style={{ marginBottom: 14 }}>
+        <LeaderBars rows={board.map((b) => ({ name: modelMeta(b.model).label, value: b.average_return_percent, color: modelMeta(b.model).color }))} />
+      </div>
       <div style={{ display: "grid", gap: 10 }}>
         {board.map((b, i) => {
           const meta = modelMeta(b.model);

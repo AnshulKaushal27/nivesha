@@ -6,14 +6,16 @@ import { api, type Band, type RankItem, type SectorRow } from "@/lib/api";
 import { BAND, fmtDate, fmtINR } from "@/lib/signals";
 import { BandChip, RankRing } from "@/components/RankRing";
 import { FactorBars } from "@/components/FactorBars";
-import { LoadMore, PageHeader } from "@/components/ui";
+import { LoadMore, PageHeader, Section } from "@/components/ui";
+import { BandDonut, RankHistogram, SectorBars } from "@/components/charts";
 import { useScreen } from "@/lib/screen";
 
 const BANDS: Band[] = ["Strong", "Good", "Neutral", "Weak"];
 const PAGE = 20;
 
 export default function RankPage() {
-  const [items, setItems] = useState<RankItem[]>([]);
+  const [items, setItems] = useState<(RankItem & { position?: number })[]>([]);
+  const [universe, setUniverse] = useState(0);
   const [date, setDate] = useState<string | null>(null);
   const [sectors, setSectors] = useState<SectorRow[]>([]);
   const [sector, setSector] = useState("");
@@ -28,7 +30,7 @@ export default function RankPage() {
   useEffect(() => {
     setLoading(true);
     Promise.all([api.rank({ limit: 600 }), api.rankSectors()])
-      .then(([r, s]) => { setItems(r.items); setDate(r.date); setSectors(s.sectors); setError(null); })
+      .then(([r, s]) => { setItems(r.items); setUniverse(r.universe ?? r.items.length); setDate(r.date); setSectors(s.sectors); setError(null); })
       .catch((e: Error) => setError(e.message))
       .finally(() => setLoading(false));
   }, []);
@@ -90,6 +92,21 @@ export default function RankPage() {
         })}
       </section>
 
+      {/* Picture of the market */}
+      {!loading && items.length > 0 && (
+        <section className="fade-up-2" style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(300px, 1fr))", gap: 14 }}>
+          <Section title="How the market splits" sub="Share of ranked stocks in each band today">
+            <BandDonut counts={counts} total={items.length} />
+          </Section>
+          <Section title="Where the scores sit" sub="Number of stocks per 10-point step">
+            <RankHistogram ranks={items.map((i) => i.buy_rank)} />
+          </Section>
+          <Section title="Strongest sectors" sub="Average Buy Rank, top sectors">
+            <SectorBars rows={sectors.map((s) => ({ sector: s.sector, count: s.count, avg_rank: s.avg_rank }))} max={8} height={220} />
+          </Section>
+        </section>
+      )}
+
       {/* Top three spotlight */}
       {!loading && top.length > 0 && (
         <section className="fade-up-2" style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(300px, 1fr))", gap: 14 }}>
@@ -99,7 +116,7 @@ export default function RankPage() {
               <div style={{ display: "flex", gap: 14, alignItems: "center", position: "relative" }}>
                 <RankRing rank={i.buy_rank} band={i.band} size={84} />
                 <div style={{ minWidth: 0 }}>
-                  <div className="eyebrow">#{n + 1} {sector ? `in ${sector}` : "overall"}</div>
+                  <div className="eyebrow">#{sector || band || q ? n + 1 : i.position ?? n + 1} {sector ? `in ${sector}` : `of ${universe}`}</div>
                   <div style={{ fontFamily: "var(--font-display)", fontWeight: 800, fontSize: 22, letterSpacing: "-0.01em", marginTop: 2 }}>{i.symbol}</div>
                   <div style={{ fontSize: 12.5, color: "var(--text-muted)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{i.sector} · {fmtINR(i.close)}</div>
                 </div>
@@ -129,6 +146,10 @@ export default function RankPage() {
 
       {/* Table */}
       <section className="card fade-up-4" style={{ overflow: "hidden" }}>
+        <div style={{ padding: "12px 16px", fontSize: 12.5, color: "var(--text-2)", background: "var(--accent-soft)", lineHeight: 1.5 }}>
+          <b style={{ color: "var(--accent-ink)" }}>How to read the score.</b> Buy Rank is a percentile of the {universe || "~470"} stocks ranked today, so about {universe ? Math.round(universe / 100) : 5} stocks
+          share each number and <b>100 means the top 1%</b>, not a perfect score. The <b>#</b> column is the exact position; ties are broken by the underlying factor score.
+        </div>
         <div style={{ overflowX: "auto" }}>
           <table style={{ width: "100%", borderCollapse: "collapse", minWidth: 820 }}>
             <thead>
@@ -148,7 +169,7 @@ export default function RankPage() {
                 const best = drivers[0]?.[0]; const worst = drivers[drivers.length - 1]?.[0];
                 return (
                   <tr key={i.ticker} style={{ borderTop: "1px solid var(--border)" }}>
-                    <td className="tnum" style={{ padding: "12px 14px", color: "var(--text-dim)", fontSize: 12 }}>{n + 1}</td>
+                    <td className="tnum" style={{ padding: "12px 14px", color: "var(--text-muted)", fontSize: 12, fontWeight: 700 }}>#{sector || band || q ? n + 1 : i.position ?? n + 1}</td>
                     <td style={{ padding: "12px 14px" }}>
                       <Link href={`/rank/${i.symbol}`} style={{ fontWeight: 800, color: "var(--text)" }}>{i.symbol}</Link>
                     </td>

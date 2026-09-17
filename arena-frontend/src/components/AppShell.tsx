@@ -43,7 +43,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
               background: "linear-gradient(135deg, var(--strong-soft), var(--accent-soft))",
               color: "var(--accent-ink)", fontWeight: 800, fontSize: 16,
             }}>◎</span>
-            <span style={{ fontFamily: "var(--font-display)", fontWeight: 800, fontSize: 16.5, letterSpacing: "-0.01em" }}>AI Investment Arena</span>
+            <span style={{ fontFamily: "var(--font-display)", fontWeight: 800, fontSize: 16.5, letterSpacing: "-0.01em" }}>Nivesha</span>
           </Link>
 
           <nav aria-label="Primary" style={{ display: "flex", gap: 4, padding: 4, borderRadius: 999, background: "color-mix(in srgb, var(--card2) 60%, transparent)" }}>

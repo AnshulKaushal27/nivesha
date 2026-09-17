@@ -257,11 +257,15 @@ async def nightly_job():
 
 async def predictor_job():
     """Saturday 09:00 IST — retrain the beat-the-market model on full history."""
-    from jobs.train_predictor import run as train
-    logger.info("━━━ 🔮  Predictor training started ━━━")
+    from database import SessionLocal as _SL
+    from quant.predict import retrain_if_due
+    logger.info("━━━ 🔮  Predictor upkeep started ━━━")
     try:
-        meta = await asyncio.to_thread(train)
-        logger.info(f"━━━ ✅  Predictor done — OOS {meta['oos']} ━━━")
+        def _go():
+            with _SL() as db:
+                return retrain_if_due(db)
+        status = await asyncio.to_thread(_go)
+        logger.info(f"━━━ ✅  Predictor upkeep — {status} ━━━")
     except Exception as exc:
         logger.error(f"Predictor job error: {exc}")
 
@@ -329,12 +333,14 @@ def setup_scheduler() -> AsyncIOScheduler:
         misfire_grace_time=3600,
     )
 
+    # Retraining is handled inside the nightly job (retrain_if_due); the Saturday
+    # run is a safety net for weeks where every nightly run was skipped.
     scheduler.add_job(
         predictor_job,
         CronTrigger(hour=9, minute=0, day_of_week="sat", timezone=IST),
         id="predictor_job",
         replace_existing=True,
-        name="Weekly predictor retrain",
+        name="Weekly predictor safety retrain",
         misfire_grace_time=6 * 3600,
     )
 

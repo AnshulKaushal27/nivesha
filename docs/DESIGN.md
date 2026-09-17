@@ -1,4 +1,4 @@
-# AI Investment Arena v2 — Design
+# Nivesha (formerly AI Investment Arena) v2 — Design
 
 > Quant-to-Newbie engine for NSE. Local first, AWS Free Tier second.
 > Written 2026-09-17 against the v1 codebase in this repo.
@@ -307,6 +307,17 @@ printed next to its output.
   top-decile beat the median in 13 of 16 test years by +1.4% per quarter. That
   is the true size of a price-only edge at three months, and the UI says so
   rather than dressing it up.
+- **Self-maintenance.** The nightly job calls `score_matured()` (every
+  prediction batch whose 63-day horizon has passed is scored against real
+  closes and stored in `prediction_scores`, shown on the page as the live
+  scorecard) and then `retrain_if_due()` (retrains when the last training is
+  older than `PREDICTOR_RETRAIN_DAYS`, default 7). A Saturday job is the safety
+  net. So the walk-forward test is not the end: the model keeps being graded on
+  data that did not exist when it was trained, and keeps learning from it.
+- **Percentile buckets.** Buy Rank is `ceil(percentile × 100)`, so with ~470
+  eligible stocks about five share every value, including 100. The API returns
+  `position` (1..N, ties broken by the TOPSIS closeness) and the UI shows
+  "#3 of 470" beside the score.
 
 ### 1.5 What is deliberately left out
 

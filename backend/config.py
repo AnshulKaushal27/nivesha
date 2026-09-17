@@ -8,6 +8,10 @@ class Settings(BaseSettings):
     # the same .env without pydantic rejecting them.
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
+    APP_NAME: str = "Nivesha"
+    ASSISTANT_NAME: str = "Voxa"
+    PREDICTOR_RETRAIN_DAYS: int = 7           # retrain when the last training is older than this
+
     # ── LLM gateway (OpenAI-compatible) ────────────────────────────────
     AICREDITS_API_KEY: str = ""
     AICREDITS_BASE_URL: str = "https://api.aicredits.in/v1"

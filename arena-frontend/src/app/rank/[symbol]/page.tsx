@@ -7,6 +7,7 @@ import { BAND, FACTOR_LABEL, FACTOR_ORDER, fmtDate, fmtINR, fmtPct, logToPct } f
 import { BandChip, RankRing } from "@/components/RankRing";
 import { FactorBars } from "@/components/FactorBars";
 import { RankSparkline } from "@/components/Sparkline";
+import { PriceChart } from "@/components/charts";
 import { useScreen } from "@/lib/screen";
 
 export default function StockRankPage({ params }: { params: { symbol: string } }) {
@@ -65,6 +66,7 @@ export default function StockRankPage({ params }: { params: { symbol: string } }
           <h1 style={{ fontFamily: "var(--font-display)", fontWeight: 800, fontSize: 38, letterSpacing: "-0.02em", marginTop: 4 }}>{d.symbol}</h1>
           <div style={{ display: "flex", flexWrap: "wrap", gap: 10, alignItems: "center", marginTop: 8 }}>
             <BandChip band={d.band} />
+            {d.position && <span className="chip" style={{ background: "var(--accent-soft)", color: "var(--accent-ink)" }}>#{d.position} of {d.universe}</span>}
             <span className="tnum" style={{ fontWeight: 700, color: "var(--text-2)" }}>{fmtINR(d.close)}</span>
             {!d.eligible && <span className="chip" style={{ background: "var(--warn-soft)", color: "var(--neutral-ink)" }}>Not eligible — low liquidity or history</span>}
           </div>
@@ -117,9 +119,12 @@ export default function StockRankPage({ params }: { params: { symbol: string } }
         {/* History + facts */}
         <div style={{ display: "grid", gap: 20, alignContent: "start" }}>
           <section className="card fade-up-2" style={{ padding: 22 }}>
-            <h2 style={{ fontFamily: "var(--font-display)", fontWeight: 800, fontSize: 18, marginBottom: 4 }}>Rank over time</h2>
-            <div style={{ fontSize: 12.5, color: "var(--text-muted)", marginBottom: 8 }}>Buy Rank, 1–100, last {d.history.length} trading days</div>
-            <RankSparkline data={d.history} color={s.fill} />
+            <h2 style={{ fontFamily: "var(--font-display)", fontWeight: 800, fontSize: 18, marginBottom: 4 }}>Price, last {d.history.length} trading days</h2>
+            <div style={{ fontSize: 12.5, color: "var(--text-muted)", marginBottom: 8 }}>Closing price with its 20-day average. A price above the average means the recent trend is up.</div>
+            <PriceChart history={d.history} color={s.fill} />
+            <h2 style={{ fontFamily: "var(--font-display)", fontWeight: 800, fontSize: 18, marginTop: 18, marginBottom: 4 }}>Rank over time</h2>
+            <div style={{ fontSize: 12.5, color: "var(--text-muted)", marginBottom: 8 }}>Buy Rank, 1–100, same period</div>
+            <RankSparkline data={d.history} color={s.fill} height={140} />
           </section>
           <section className="card fade-up-3" style={{ padding: 22 }}>
             <h2 style={{ fontFamily: "var(--font-display)", fontWeight: 800, fontSize: 18, marginBottom: 12 }}>The numbers behind it</h2>

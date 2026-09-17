@@ -44,6 +44,10 @@ def list_rank(
     on = on or _latest_date(db)
     if on is None:
         return {"date": None, "count": 0, "items": []}
+    # position = overall place among all ranked stocks that day (1 = best), independent of filters
+    all_rows = db.execute(select(FactorScore.ticker).where(FactorScore.date == on)
+                          .order_by(FactorScore.buy_rank.desc(), FactorScore.topsis.desc())).scalars().all()
+    position = {t: i + 1 for i, t in enumerate(all_rows)}
     stmt = select(FactorScore).where(FactorScore.date == on, FactorScore.buy_rank >= min_rank)
     if sector:
         stmt = stmt.where(FactorScore.sector == sector)
@@ -52,7 +56,8 @@ def list_rank(
     total = db.execute(select(func.count()).select_from(stmt.subquery())).scalar()
     rows = db.execute(stmt.order_by(FactorScore.buy_rank.desc(), FactorScore.topsis.desc())
                       .offset(offset).limit(limit)).scalars().all()
-    return {"date": str(on), "count": total, "items": [_item(s) for s in rows]}
+    return {"date": str(on), "count": total, "universe": len(all_rows),
+            "items": [{**_item(s), "position": position.get(s.ticker)} for s in rows]}
 
 
 @router.get("/dates")
@@ -81,8 +86,13 @@ def rank_detail(ticker: str, history: int = Query(60, ge=1, le=500), db: Session
     if not rows:
         raise HTTPException(404, f"No Buy Rank for {ticker}")
     latest = rows[0]
+    better = db.execute(select(func.count()).select_from(FactorScore).where(
+        FactorScore.date == latest.date,
+        (FactorScore.buy_rank > latest.buy_rank) | ((FactorScore.buy_rank == latest.buy_rank) & (FactorScore.topsis > latest.topsis)))).scalar()
+    universe = db.execute(select(func.count()).select_from(FactorScore).where(FactorScore.date == latest.date)).scalar()
     return {
         **_item(latest, full=True),
+        "position": (better or 0) + 1, "universe": universe,
         "history": [{"date": str(r.date), "buy_rank": r.buy_rank, "close": r.close} for r in reversed(rows)],
     }
 

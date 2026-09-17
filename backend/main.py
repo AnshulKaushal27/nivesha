@@ -36,8 +36,8 @@ async def lifespan(app: FastAPI):
 
 # ── App ────────────────────────────────────────────────────────────────────
 app = FastAPI(
-    title="AI Investment Arena",
-    description="AI Hedge Fund Simulator — NSE/NIFTY200",
+    title="Nivesha",
+    description="Institutional signals for NSE stocks, explained simply",
     version="2.0.0",
     lifespan=lifespan,
 )

@@ -1,6 +1,6 @@
-# AI Investment Arena
+# Nivesha
 
-**An AI-Powered Hedge Fund Simulator for Indian Equities (NSE/NIFTY200)**
+**Institutional signals for NSE stocks, explained simply.** Formerly *AI Investment Arena*; the v1 hedge-fund simulator lives on as the AI Arena tab. The in-app assistant is **Voxa**.
 
 Compete multiple LLM-driven investment strategies against each other in real-time. Watch different AI models manage portfolios with distinct philosophies, generate stock picks, and compete on a live performance leaderboard.
 

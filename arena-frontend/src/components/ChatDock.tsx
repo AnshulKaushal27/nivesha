@@ -106,24 +106,24 @@ export function ChatDock() {
   return (
     <>
       {/* Launcher */}
-      <button onClick={() => setOpen((o) => !o)} aria-label={open ? "Close assistant" : "Open assistant"} aria-expanded={open} className="glass" style={{
+      <button onClick={() => setOpen((o) => !o)} aria-label={open ? "Close Voxa" : "Open Voxa"} aria-expanded={open} className="glass" style={{
         position: "fixed", right: 22, bottom: 22, zIndex: 60, height: 52, padding: "0 18px 0 14px", borderRadius: 999,
         display: "flex", alignItems: "center", gap: 10, fontWeight: 800, fontSize: 14, color: "var(--accent-ink)", boxShadow: "var(--shadow-lg)",
       }}>
         <span aria-hidden style={{ width: 28, height: 28, borderRadius: 9, display: "grid", placeItems: "center", background: "linear-gradient(135deg, var(--accent), var(--good))", color: "#fff", fontSize: 14 }}>✦</span>
-        {open ? "Close" : "Ask about this screen"}
+        {open ? "Close" : "Ask Voxa"}
       </button>
 
       {/* Panel */}
       {open && (
-        <aside role="dialog" aria-label="Assistant" className="glass fade-up" style={{
+        <aside role="dialog" aria-label="Voxa assistant" className="glass fade-up" style={{
           position: "fixed", right: 22, bottom: 86, zIndex: 60, width: "min(420px, calc(100vw - 32px))", height: "min(680px, calc(100vh - 120px))",
           borderRadius: 22, display: "grid", gridTemplateRows: "auto 1fr auto", overflow: "hidden", boxShadow: "var(--shadow-lg)",
         }}>
           <header style={{ display: "flex", alignItems: "center", gap: 10, padding: "14px 16px", borderBottom: "1px solid var(--border)" }}>
             <span aria-hidden style={{ width: 30, height: 30, borderRadius: 10, display: "grid", placeItems: "center", background: "linear-gradient(135deg, var(--accent), var(--good))", color: "#fff" }}>✦</span>
             <div style={{ lineHeight: 1.15 }}>
-              <div style={{ fontWeight: 800 }}>Arena assistant</div>
+              <div style={{ fontWeight: 800 }}>Voxa</div>
               <div style={{ fontSize: 11.5, color: "var(--text-muted)" }}>Sees this screen · remembers this chat · can search the web</div>
             </div>
             <button onClick={reset} style={{ marginLeft: "auto", fontSize: 12, fontWeight: 700, color: "var(--accent-ink)", padding: "6px 10px", borderRadius: 999, background: "var(--accent-soft)" }}>New chat</button>
@@ -144,7 +144,7 @@ export function ChatDock() {
               </div>
             )}
             {msgs.map((m, i) => (
-              <Bubble key={i} role={m.role} declined={m.declined} tools={m.tools} pending={m.pending && !m.content}>
+              <Bubble key={i} role={m.role} declined={m.declined} tools={m.tools} pending={m.pending && !m.content} streaming={m.pending && !!m.content}>
                 {m.role === "assistant"
                   ? <ReactMarkdown remarkPlugins={[remarkGfm]} components={{ a: (p) => <a {...p} target="_blank" rel="noreferrer" style={{ color: "var(--accent-ink)", textDecoration: "underline" }} /> }}>{m.content}</ReactMarkdown>
                   : m.content}
@@ -170,7 +170,7 @@ function replaceLast(list: Msg[], m: Msg): Msg[] {
   return out;
 }
 
-function Bubble({ role, declined, tools, pending, children }: { role: "user" | "assistant"; declined?: boolean; tools?: string[]; pending?: boolean; children: React.ReactNode }) {
+function Bubble({ role, declined, tools, pending, streaming, children }: { role: "user" | "assistant"; declined?: boolean; tools?: string[]; pending?: boolean; streaming?: boolean; children: React.ReactNode }) {
   const user = role === "user";
   return (
     <div style={{ display: "grid", gap: 4, justifyItems: user ? "end" : "start" }}>
@@ -186,6 +186,7 @@ function Bubble({ role, declined, tools, pending, children }: { role: "user" | "
         border: user ? "none" : "1px solid var(--border)", whiteSpace: user ? "pre-wrap" : "normal",
       }}>
         {pending ? <Dots /> : children}
+        {streaming && <span className="caret" aria-hidden />}
       </div>
     </div>
   );

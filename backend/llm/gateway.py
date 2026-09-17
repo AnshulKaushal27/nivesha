@@ -20,7 +20,7 @@ from pydantic import BaseModel
 
 from config import settings
 
-PROJECT_TAG = "ai-arena"
+PROJECT_TAG = "nivesha"
 
 
 def llm_available() -> bool:

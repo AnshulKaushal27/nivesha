@@ -15,7 +15,7 @@ export interface ScreenContext {
   data?: Record<string, unknown>;
 }
 
-let current: ScreenContext = { page: "unknown", route: "/", title: "AI Investment Arena", summary: "Nothing loaded yet." };
+let current: ScreenContext = { page: "unknown", route: "/", title: "Nivesha", summary: "Nothing loaded yet." };
 const listeners = new Set<() => void>();
 
 export const getScreen = (): ScreenContext => current;

@@ -163,6 +163,10 @@ input, select { font: inherit; color: inherit; }
   border-radius: var(--radius-sm);
 }
 
+/* Streaming caret in chat bubbles */
+@keyframes blink { 0%, 100% { opacity: 1; } 50% { opacity: 0; } }
+.caret { display: inline-block; width: 7px; height: 14px; margin-left: 3px; vertical-align: -2px; border-radius: 2px; background: var(--accent); animation: blink 0.9s steps(1) infinite; }
+
 /* Markdown inside chat bubbles */
 .chat-md p { margin: 0 0 8px; }
 .chat-md p:last-child { margin-bottom: 0; }
