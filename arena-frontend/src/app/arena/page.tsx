@@ -68,11 +68,17 @@ export default function ArenaPage() {
       />
 
       {/* Admin strip */}
-      <section className="glass fade-up-1" style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 10, padding: "10px 14px", borderRadius: 16 }}>
-        <span className="eyebrow">Controls</span>
-        <Button onClick={() => run("simulate")} disabled={busy !== null}>{busy === "simulate" ? "Running the AIs…" : "▶ Run today's round"}</Button>
-        <Button onClick={() => run("value")} disabled={busy !== null} variant="ghost">{busy === "value" ? "Updating…" : "↻ Update values"}</Button>
-        {notice && <span style={{ fontSize: 12.5, color: "var(--text-muted)" }}>{notice}</span>}
+      <section className="glass fade-up-1" style={{ display: "grid", gap: 8, padding: "12px 16px", borderRadius: 16 }}>
+        <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 10 }}>
+          <span className="eyebrow">Controls</span>
+          <Button onClick={() => run("simulate")} disabled={busy !== null}>{busy === "simulate" ? "Running the AIs…" : "▶ Run today's round"}</Button>
+          <Button onClick={() => run("value")} disabled={busy !== null} variant="ghost">{busy === "value" ? "Updating…" : "↻ Update values"}</Button>
+          {notice && <span style={{ fontSize: 12.5, color: "var(--text-muted)" }}>{notice}</span>}
+        </div>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))", gap: "4px 20px", fontSize: 12.5, color: "var(--text-2)", lineHeight: 1.5 }}>
+          <div><b>Run today's round</b> builds today's shortlist from the latest prices, gives it to all four AIs, and saves the portfolios they pick. Once per day; the scheduler does it at 08:40 IST. Takes a minute and uses AI credits.</div>
+          <div><b>Update values</b> re-prices today's portfolios at the latest prices and refreshes every manager's return, leaderboard and race chart. Instant, no AI involved; the scheduler does it at 15:45 IST.</div>
+        </div>
       </section>
 
       {/* Summary tiles */}

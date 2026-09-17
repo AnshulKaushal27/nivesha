@@ -19,6 +19,7 @@ export default function PredictPage() {
   const [tab, setTab] = useState<Tab>("odds");
   const [shown, setShown] = useState(PAGE);
   const [sector, setSector] = useState("");
+  const [q, setQ] = useState("");
   const [loading, setLoading] = useState(true);
   const [training, setTraining] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -32,9 +33,13 @@ export default function PredictPage() {
     api.predictLive().then(setLive).catch(() => setLive(null));
   }
   useEffect(load, []);
-  useEffect(() => { setShown(PAGE); }, [sector]);
+  useEffect(() => { setShown(PAGE); }, [sector, q]);
 
-  const filtered = useMemo(() => items.filter((i) => !sector || i.sector === sector), [items, sector]);
+  const filtered = useMemo(() => {
+    const needle = q.trim().toLowerCase();
+    return items.filter((i) => (!sector || i.sector === sector) &&
+      (!needle || i.symbol.toLowerCase().includes(needle) || (i.sector ?? "").toLowerCase().includes(needle)));
+  }, [items, sector, q]);
   const sectors = useMemo(() => Array.from(new Set(items.map((i) => i.sector ?? "Unknown"))).sort(), [items]);
 
   async function train() {
@@ -44,13 +49,13 @@ export default function PredictPage() {
 
   useScreen(run ? {
     page: "predict", route: "/predict", title: `Predictions — ${TAB_LABEL[tab]}`, asOf: run.as_of,
-    summary: `Predictions page, tab "${TAB_LABEL[tab]}". Model trained on ${run.history_years} years; out of sample accuracy ${((run.oos.accuracy ?? 0) * 100).toFixed(0)}%, AUC ${(run.oos.auc ?? 0).toFixed(2)}, top-decile beat-market rate ${((run.oos.top_decile_hit ?? 0) * 100).toFixed(0)}%, extra return ${(run.oos.top_decile_excess_pct ?? 0).toFixed(1)}% per quarter.` + (sector ? ` Sector filter: ${sector}.` : ""),
+    summary: `Predictions page, tab "${TAB_LABEL[tab]}". Model trained on ${run.history_years} years; out of sample accuracy ${((run.oos.accuracy ?? 0) * 100).toFixed(0)}%, AUC ${(run.oos.auc ?? 0).toFixed(2)}, top-decile beat-market rate ${((run.oos.top_decile_hit ?? 0) * 100).toFixed(0)}%, extra return ${(run.oos.top_decile_excess_pct ?? 0).toFixed(1)}% per quarter.` + (sector ? ` Sector filter: ${sector}.` : "") + (q ? ` Search: "${q}" (${filtered.length} match).` : ""),
     data: tab === "odds" ? { visible_rows: filtered.slice(0, shown).map((p, n) => ({ n: n + 1, symbol: p.symbol, odds_pct: Math.round(p.prob_up * 100), buy_rank: p.buy_rank, sector: p.sector, price: p.close })) }
       : tab === "types" ? { trait_profiles: run.profiles, importance: run.importance }
       : tab === "sectors" ? { sectors: run.sectors.slice(0, 25) }
       : tab === "history" ? { band_base_rates: run.band_base_rates }
       : { folds: run.folds, calibration: run.calibration, oos: run.oos },
-  } : null, [run, tab, sector, shown, filtered.length]);
+  } : null, [run, tab, sector, q, shown, filtered.length]);
 
   if (error) return <EmptyState icon="⚠" title="Could not load predictions" body={error} />;
 
@@ -102,9 +107,16 @@ export default function PredictPage() {
           {tab === "odds" && (
             <Section title="Stocks with the best odds of beating the market" sub={`Next ${run.horizon_days} trading days · odds from the model · Strength Score shown for comparison`}
               action={
-                <select value={sector} onChange={(e) => setSector(e.target.value)} aria-label="Sector" style={{ padding: "8px 12px", borderRadius: 999, border: "1px solid var(--border)", background: "var(--card)" }}>
-                  <option value="">All sectors</option>{sectors.map((s) => <option key={s}>{s}</option>)}
-                </select>
+                <div style={{ display: "flex", flexWrap: "wrap", gap: 8, alignItems: "center", justifyContent: "flex-end" }}>
+                  <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search a stock or sector…" aria-label="Search stocks"
+                         style={{ width: 220, padding: "8px 14px", borderRadius: 999, border: "1px solid var(--border)", background: "var(--card)", outline: "none", fontSize: 13 }} />
+                  <select value={sector} onChange={(e) => setSector(e.target.value)} aria-label="Sector" style={{ padding: "8px 12px", borderRadius: 999, border: "1px solid var(--border)", background: "var(--card)" }}>
+                    <option value="">All sectors</option>{sectors.map((s) => <option key={s}>{s}</option>)}
+                  </select>
+                  {(q || sector) && (
+                    <button onClick={() => { setQ(""); setSector(""); }} style={{ fontSize: 12.5, fontWeight: 700, color: "var(--accent-ink)", padding: "7px 11px", borderRadius: 999, background: "var(--accent-soft)" }}>Clear</button>
+                  )}
+                </div>
               }>
               <div style={{ marginBottom: 14 }}>
                 <div className="eyebrow" style={{ marginBottom: 6 }}>How the odds are spread across {filtered.length} stocks</div>
@@ -119,6 +131,11 @@ export default function PredictPage() {
                   </tr></thead>
                   <tbody>
                     {filtered.slice(0, shown).map((p, n) => <OddsRow key={p.ticker} p={p} n={n} />)}
+                    {filtered.length === 0 && (
+                      <tr><td colSpan={6} style={{ padding: 32, textAlign: "center", color: "var(--text-muted)" }}>
+                        {q ? <>No stock or sector matches “{q}”. The odds cover {items.length} eligible NIFTY 500 stocks.</> : "Nothing to show."}
+                      </td></tr>
+                    )}
                   </tbody>
                 </table>
               </div>
