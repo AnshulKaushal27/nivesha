@@ -15,6 +15,13 @@ class Settings(BaseSettings):
     LLM_STRUCTURED_METHOD: str = "json_schema"  # json_schema | function_calling | json_mode
     LLM_TEMPERATURE: float = 0.3
 
+    # ── Chat assistant ─────────────────────────────────────────────────
+    CHAT_MODEL: str = "gpt-4o-mini"               # answers
+    CHAT_GUARD_MODEL: str = "openai/gpt-4.1-nano" # screens every prompt first
+    CHAT_MAX_HISTORY: int = 24                    # messages sent to the model per turn
+    CHAT_RATE_LIMIT_PER_MIN: int = 12
+    CHAT_WEB_SEARCH: bool = True
+
     # ── Database ───────────────────────────────────────────────────────
     # SQLite for a zero-setup start; Postgres for real work:
     #   postgresql+psycopg://arena:arena@localhost:5432/arena

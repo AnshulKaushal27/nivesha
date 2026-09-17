@@ -7,6 +7,7 @@ import { BAND, FACTOR_LABEL, FACTOR_ORDER, fmtDate, fmtINR, fmtPct, logToPct } f
 import { BandChip, RankRing } from "@/components/RankRing";
 import { FactorBars } from "@/components/FactorBars";
 import { RankSparkline } from "@/components/Sparkline";
+import { useScreen } from "@/lib/screen";
 
 export default function StockRankPage({ params }: { params: { symbol: string } }) {
   const symbol = decodeURIComponent(params.symbol).toUpperCase();
@@ -18,6 +19,17 @@ export default function StockRankPage({ params }: { params: { symbol: string } }
   useEffect(() => {
     api.rankDetail(symbol, 120).then(setD).catch((e: Error) => setError(e.message));
   }, [symbol]);
+
+  useScreen(d ? {
+    page: "stock", route: `/rank/${symbol}`, title: `${d.symbol} — Buy Rank ${d.buy_rank} (${d.band})`, asOf: d.date,
+    summary: `Stock page for ${d.symbol} (${d.sector}). Buy Rank ${d.buy_rank}/100, band ${d.band}, price ₹${d.close}, as of ${d.date}.` +
+      (ex ? ` AI explanation shown: ${ex.bullets.join(" ")} Watch out: ${ex.watch_out}` : " AI explanation not requested yet."),
+    data: {
+      buy_rank: d.buy_rank, band: d.band, sector: d.sector, price: d.close, eligible: d.eligible,
+      factor_z_scores: d.z, factor_contributions: d.contributions, raw_factor_values: d.raw,
+      rank_history_last_10: d.history.slice(-10),
+    },
+  } : null, [d, ex, symbol]);
 
   function loadExplanation() {
     setExLoading(true);

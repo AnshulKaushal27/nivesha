@@ -6,7 +6,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from config import settings
 from database import Base, engine
-from routes import leaderboard, portfolios, market, admin, rank, predict
+from routes import leaderboard, portfolios, market, admin, rank, predict, chat
 from scheduler import setup_scheduler
 
 # ── Logging ────────────────────────────────────────────────────────────────
@@ -57,6 +57,7 @@ app.include_router(market.router)
 app.include_router(admin.router)
 app.include_router(rank.router)
 app.include_router(predict.router)
+app.include_router(chat.router)
 
 
 @app.get("/health")

@@ -35,6 +35,12 @@ the v1 UI is kept at `/legacy` until each of its pages is rebuilt.
 
 Tests: `cd backend && .venv/bin/python -m pytest -q`.
 
+**Chat assistant.** The ✦ button on every page opens an assistant that sees the current screen,
+remembers the conversation (Postgres-checkpointed LangGraph thread), searches the web with
+DuckDuckGo, and reads the app's own data through tools. A lighter guard model
+(`CHAT_GUARD_MODEL`) screens every message before `CHAT_MODEL` answers. Set
+`LANGSMITH_TRACING=true` to see every turn as a trace named `chat.assistant`.
+
 ---
 
 📌 Overview

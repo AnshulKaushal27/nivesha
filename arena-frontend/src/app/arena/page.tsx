@@ -6,9 +6,11 @@ import { CartesianGrid, Legend, Line, LineChart, ResponsiveContainer, Tooltip, X
 import { api, type HistoryMap, type LeaderboardEntry, type ModelResult, type PortfolioDetail, type PortfolioListItem, type SimData } from "@/lib/api";
 import { fmtDate, fmtINR, fmtPct, modelMeta, RISK_TONE } from "@/lib/signals";
 import { Button, EmptyState, LoadMore, PageHeader, Pill, Section, StatTile, Tabs } from "@/components/ui";
+import { useScreen } from "@/lib/screen";
 
 type Tab = "today" | "leaderboard" | "history" | "portfolios" | "shortlist";
 const PAGE = 20;
+const TAB_LABEL: Record<Tab, string> = { today: "Today's picks", leaderboard: "Leaderboard", history: "Race", portfolios: "All portfolios", shortlist: "Shortlist" };
 
 export default function ArenaPage() {
   const [tab, setTab] = useState<Tab>("today");
@@ -37,9 +39,22 @@ export default function ArenaPage() {
     } catch (e) { setNotice((e as Error).message); } finally { setBusy(null); }
   }
 
-  if (error) return <EmptyState icon="⚠" title="Could not reach the Arena" body={error} />;
-
   const models = sim?.model_results ?? [];
+
+  useScreen(!loading && sim ? {
+    page: "arena", route: "/arena", title: `AI Arena — ${TAB_LABEL[tab]}`, asOf: sim.date,
+    summary: `AI Arena, tab "${TAB_LABEL[tab]}", latest round ${sim.date}. ` + (models.length
+      ? `Managers: ${models.map((m) => `${modelMeta(m.model).label} ${m.current_return == null ? "(not valued)" : fmtPct(m.current_return, 2)}, ${m.risk_level ?? "?"} risk, ${m.portfolio.length} stocks`).join("; ")}.`
+      : "No round has been run yet."),
+    data: {
+      managers: models.map((m) => ({ manager: modelMeta(m.model).label, key: m.model, return_pct: m.current_return, value: m.portfolio_value, risk: m.risk_level, strategy: m.strategy_summary,
+        holdings: m.portfolio.map((h) => ({ symbol: h.ticker.replace(".NS", ""), weight_pct: h.allocation_percent, confidence: h.confidence, why: h.reasoning })) })),
+      leaderboard: board.map((b) => ({ manager: modelMeta(b.model).label, avg_return_pct: b.average_return_percent, win_rate: b.win_rate, rounds: b.total_portfolios })),
+      shortlist_top10: (sim.market_candidates ?? []).slice(0, 10).map((c) => ({ symbol: c.ticker.replace(".NS", ""), topsis: c.topsis_score, one_month_pct: c.one_month_return, rsi: c.rsi, sector: c.sector })),
+    },
+  } : null, [loading, sim, board, tab]);
+
+  if (error) return <EmptyState icon="⚠" title="Could not reach the Arena" body={error} />;
   const leader = [...board].sort((a, b) => b.average_return_percent - a.average_return_percent)[0];
 
   return (

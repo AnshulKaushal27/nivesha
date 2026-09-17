@@ -5,9 +5,11 @@ import { useEffect, useMemo, useState } from "react";
 import { api, type PredictionItem, type PredictRun } from "@/lib/api";
 import { fmtDate, fmtINR, fmtPct } from "@/lib/signals";
 import { Button, EmptyState, LoadMore, PageHeader, Pill, Section, StatTile, Tabs } from "@/components/ui";
+import { useScreen } from "@/lib/screen";
 
 const PAGE = 20;
 type Tab = "odds" | "types" | "sectors" | "history" | "model";
+const TAB_LABEL: Record<Tab, string> = { odds: "Best odds now", types: "What type rises", sectors: "Sector outlook", history: "20-year base rates", model: "How it was tested" };
 
 export default function PredictPage() {
   const [run, setRun] = useState<PredictRun | null>(null);
@@ -36,6 +38,16 @@ export default function PredictPage() {
     setTraining(true);
     try { await api.trainPredictor(); load(); } catch (e) { setError((e as Error).message); } finally { setTraining(false); }
   }
+
+  useScreen(run ? {
+    page: "predict", route: "/predict", title: `Predictions — ${TAB_LABEL[tab]}`, asOf: run.as_of,
+    summary: `Predictions page, tab "${TAB_LABEL[tab]}". Model trained on ${run.history_years} years; out of sample accuracy ${((run.oos.accuracy ?? 0) * 100).toFixed(0)}%, AUC ${(run.oos.auc ?? 0).toFixed(2)}, top-decile beat-market rate ${((run.oos.top_decile_hit ?? 0) * 100).toFixed(0)}%, extra return ${(run.oos.top_decile_excess_pct ?? 0).toFixed(1)}% per quarter.` + (sector ? ` Sector filter: ${sector}.` : ""),
+    data: tab === "odds" ? { visible_rows: filtered.slice(0, shown).map((p, n) => ({ n: n + 1, symbol: p.symbol, odds_pct: Math.round(p.prob_up * 100), buy_rank: p.buy_rank, sector: p.sector, price: p.close })) }
+      : tab === "types" ? { trait_profiles: run.profiles, importance: run.importance }
+      : tab === "sectors" ? { sectors: run.sectors.slice(0, 25) }
+      : tab === "history" ? { band_base_rates: run.band_base_rates }
+      : { folds: run.folds, calibration: run.calibration, oos: run.oos },
+  } : null, [run, tab, sector, shown, filtered.length]);
 
   if (error) return <EmptyState icon="⚠" title="Could not load predictions" body={error} />;
 

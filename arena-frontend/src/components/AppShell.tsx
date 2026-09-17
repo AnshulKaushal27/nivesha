@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
+import { ChatDock } from "@/components/ChatDock";
 
 const NAV = [
   { href: "/",        label: "Buy Rank",    icon: "◎" },
@@ -80,6 +81,8 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         Educational simulation. Not investment advice. Past performance of simulated portfolios does not predict future results.
         <br /><Link href="/legacy" style={{ color: "var(--text-dim)" }}>Legacy v1 interface</Link>
       </footer>
+
+      <ChatDock />
     </>
   );
 }

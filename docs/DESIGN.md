@@ -498,7 +498,24 @@ Graph inventory:
 | `intel.extract` | search → dedupe → extract (structured) → score decay → persist | Phase 1 |
 | `danger.spike_check` | search news → classify has_specific_news | Phase 1 |
 | `arena.cycle` | build_packet → fan-out round 1 (`Send` per persona) → collect → fan-out round 2 → risk_officer → ensemble (pure code) → construct_portfolio → persist | Phase 2 |
-| `chat.assistant` | tool-calling agent with checkpointer; tools read from the API layer only | later |
+| `chat.assistant` | guard (light model, structured verdict) → agent (gpt-4o-mini + tools) ⇄ tools; Postgres checkpointer per thread | Phase 0 (shipped 2026-09-17) |
+
+**Chat assistant details.** `backend/llm/chat.py`. The guard runs on
+`CHAT_GUARD_MODEL` (`openai/gpt-4.1-nano`) and returns a category; only
+`screen_data`, `market_general` and `app_usage` reach the main model, the rest
+get a one-line redirect and are never sent on. The agent's system prompt
+carries a compact JSON of *what is on the user's screen* (`lib/screen.ts` on
+the frontend; each page publishes route, a plain summary and the visible rows),
+so "why is this one ranked 78" resolves without a lookup. Tools:
+`get_rank_detail`, `list_ranks`, `list_sectors`, `explain_rank`,
+`get_prediction`, `top_predictions`, `arena_today`, `arena_leaderboard`,
+`web_search` (DuckDuckGo via `ddgs`, text or news). Threads are checkpointed
+with `PostgresSaver` (SQLite saver when `DATABASE_URL` is SQLite); the browser
+keeps its thread id in localStorage and "New chat" deletes the thread.
+Streaming is SSE (`status` / `delta` / `done` / `error` frames). Rate limit
+12 messages/min/IP. Every run is a LangSmith trace named `chat.assistant`
+tagged with the thread id; the guard call carries the `guard` tag so it can be
+filtered.
 
 Conventions: state is a `TypedDict`; every node is a pure function of state;
 anything that must be enforced (position caps, bans, number audit) is a code

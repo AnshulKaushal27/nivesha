@@ -21,7 +21,11 @@ langchain>=1.0
 langchain-core>=1.0
 langchain-openai>=1.0
 langgraph>=1.0
+langgraph-checkpoint-postgres>=2.0
+langgraph-checkpoint-sqlite>=2.0
+psycopg-pool>=3.2
 langsmith>=0.3
+ddgs>=9.0                      # DuckDuckGo search tool for the chat assistant
 
 # Dev-only data fallback when no Upstox token is available (never used in prod)
 yfinance>=0.2.50

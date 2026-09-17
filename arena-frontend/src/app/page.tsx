@@ -7,6 +7,7 @@ import { BAND, fmtDate, fmtINR } from "@/lib/signals";
 import { BandChip, RankRing } from "@/components/RankRing";
 import { FactorBars } from "@/components/FactorBars";
 import { LoadMore, PageHeader } from "@/components/ui";
+import { useScreen } from "@/lib/screen";
 
 const BANDS: Band[] = ["Strong", "Good", "Neutral", "Weak"];
 const PAGE = 20;
@@ -44,6 +45,16 @@ export default function RankPage() {
   }, [items]);
 
   const top = filtered.slice(0, 3);
+
+  useScreen(loading ? null : {
+    page: "rank", route: "/", title: "Buy Rank — NIFTY 500", asOf: date,
+    summary: `Buy Rank list as of ${date}. ${items.length} stocks ranked; ${counts.Strong ?? 0} Strong, ${counts.Good ?? 0} Good, ${counts.Neutral ?? 0} Neutral, ${counts.Weak ?? 0} Weak.` +
+      (sector || band || q ? ` Filters: ${[sector && `sector=${sector}`, band && `band=${band}`, q && `search="${q}"`].filter(Boolean).join(", ")}. ${filtered.length} match.` : ""),
+    data: {
+      visible_rows: filtered.slice(0, shown).map((i, n) => ({ n: n + 1, symbol: i.symbol, rank: i.buy_rank, band: i.band, sector: i.sector, price: i.close, top_factor_contributions: i.contributions })),
+      showing: Math.min(shown, filtered.length), of: filtered.length,
+    },
+  }, [loading, date, items.length, sector, band, q, shown, filtered.length]);
 
   if (error) return <ErrorState message={error} />;
 
