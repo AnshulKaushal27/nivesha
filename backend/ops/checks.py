@@ -60,25 +60,53 @@ def llm_heartbeat() -> dict:
     return {"ok": True, "projection": proj, "budget": budget}
 
 
+def upstox_token_info(token: str | None = None) -> dict:
+    """Read the token's own claims (no network): type, expiry, days left."""
+    import base64
+    import json
+    token = settings.UPSTOX_ANALYTICS_TOKEN if token is None else token
+    if not token or token.count(".") != 2:
+        return {"present": bool(token), "decodable": False}
+    try:
+        payload = json.loads(base64.urlsafe_b64decode(token.split(".")[1] + "=="))
+        exp = datetime.utcfromtimestamp(payload["exp"]).date() if "exp" in payload else None
+        return {"present": True, "decodable": True, "extended": bool(payload.get("isExtended")),
+                "expires_on": str(exp) if exp else None, "days_left": (exp - date.today()).days if exp else None,
+                "plus_plan": bool(payload.get("isPlusPlan")), "user": payload.get("sub")}
+    except Exception:                               # noqa: BLE001
+        return {"present": True, "decodable": False}
+
+
 def upstox_check() -> dict:
-    """Trading mornings: confirm the Upstox token works before the morning round needs it."""
+    """
+    Trading mornings: confirm the Upstox token works before the morning round needs it.
+    Probes a market-data endpoint (the only kind an *extended* token may call) — the
+    user-profile endpoint answers 401 for extended tokens even when they are valid.
+    """
     if not settings.UPSTOX_ANALYTICS_TOKEN:
         resolve("upstox_token_expired")
+        resolve("upstox_token_expiring")
         return {"ok": None, "note": "no Upstox token configured; data comes from the fallback source"}
+    info = upstox_token_info()
     try:
-        r = httpx.get("https://api.upstox.com/v2/user/profile",
+        r = httpx.get("https://api.upstox.com/v3/market-quote/ltp", params={"instrument_key": "NSE_EQ|INE002A01018"},
                       headers={"Authorization": f"Bearer {settings.UPSTOX_ANALYTICS_TOKEN}", "Accept": "application/json"},
                       timeout=httpx.Timeout(20, connect=5))
         if r.status_code == 401:
             raise_alert("upstox_token_expired", KIND_HELP["upstox_token_expired"], "warning", detail=r.text[:300])
-            return {"ok": False, "status": 401}
+            return {"ok": False, "status": 401, "token": info}
         r.raise_for_status()
     except httpx.HTTPError as exc:
         raise_alert("upstox_unreachable", f"Upstox API not reachable: {exc}", "warning")
-        return {"ok": False, "error": str(exc)[:300]}
+        return {"ok": False, "error": str(exc)[:300], "token": info}
     resolve("upstox_token_expired")
     resolve("upstox_unreachable")
-    return {"ok": True}
+    if info.get("days_left") is not None and info["days_left"] <= 14:
+        raise_alert("upstox_token_expiring", f"The Upstox {'extended ' if info.get('extended') else ''}token expires on {info['expires_on']} "
+                    f"({info['days_left']} days). Generate a new one at Upstox and update UPSTOX_ANALYTICS_TOKEN before then.", "warning")
+    else:
+        resolve("upstox_token_expiring")
+    return {"ok": True, "token": info}
 
 
 def data_freshness(db: Session | None = None) -> dict:

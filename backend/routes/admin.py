@@ -68,6 +68,7 @@ def system_status(request: Request, db: Session = Depends(get_db)):
                  "model_oos": last_model.meta.get("oos") if last_model else None},
         "llm": usage_summary(db),
         "provider": __import__("llm.gateway", fromlist=["provider_status"]).provider_status(),
+        "upstox": __import__("ops.checks", fromlist=["upstox_token_info"]).upstox_token_info(),
         "calendar": holidays.coverage(),
         "channels": {"telegram": bool(settings.TELEGRAM_BOT_TOKEN and settings.TELEGRAM_CHAT_ID), "webhook": bool(settings.ALERT_WEBHOOK_URL)},
     }

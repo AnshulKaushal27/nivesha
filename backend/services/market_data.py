@@ -109,8 +109,8 @@ def _try_csv_master() -> Optional[Dict[str, str]]:
 def _search_one(symbol: str) -> Optional[str]:
     try:
         resp = _HTTP.get(
-            f"{UPSTOX_BASE}/v2/instruments/search",   # ← was /market-quote/search
-            params={"q": symbol, "exchange": "NSE"},
+            f"{UPSTOX_BASE}/v2/instruments/search",
+            params={"query": symbol, "exchange": "NSE"},   # the API's parameter is `query`, not `q`
             headers=_h(),
             timeout=10,
         )

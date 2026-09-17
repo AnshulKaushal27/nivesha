@@ -72,3 +72,14 @@ def test_budget_status_and_exhaustion(monkeypatch):
     monkeypatch.setattr(u.settings, "LLM_DAILY_BUDGET_INR", 0.0)        # cap disabled
     u._budget_cache.update(day=None)
     assert not u.budget_exhausted()
+
+
+def test_upstox_token_info_decodes_extended_token():
+    from ops.checks import upstox_token_info
+    # header.payload.signature with isExtended and an exp in 2027 (signature irrelevant to decoding)
+    import base64, json
+    payload = base64.urlsafe_b64encode(json.dumps({"sub": "X", "isExtended": True, "exp": 1811023200}).encode()).decode().rstrip("=")
+    info = upstox_token_info(f"eyJhbGciOiJIUzI1NiJ9.{payload}.sig")
+    assert info["extended"] is True and info["expires_on"] == "2027-05-22" and info["days_left"] > 100
+    assert upstox_token_info("not-a-jwt")["decodable"] is False
+    assert upstox_token_info("")["present"] is False
